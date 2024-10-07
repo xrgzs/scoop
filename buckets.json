@@ -1,12 +1,12 @@
 {
-    "main": "https://github.com/ScoopInstaller/Main",
-    "extras": "https://github.com/ScoopInstaller/Extras",
-    "versions": "https://github.com/ScoopInstaller/Versions",
-    "nirsoft": "https://github.com/ScoopInstaller/Nirsoft",
-    "sysinternals": "https://github.com/niheaven/scoop-sysinternals",
-    "php": "https://github.com/ScoopInstaller/PHP",
-    "nerd-fonts": "https://github.com/matthewjberger/scoop-nerd-fonts",
-    "nonportable": "https://github.com/ScoopInstaller/Nonportable",
-    "java": "https://github.com/ScoopInstaller/Java",
-    "games": "https://github.com/Calinou/scoop-games"
+    "main": "https://gitee.com/scoop-installer/Main",
+    "extras": "https://gitee.com/scoop-installer/Extras",
+    "versions": "https://gitee.com/scoop-installer/Versions",
+    "nirsoft": "https://gitee.com/scoop-installer/Nirsoft",
+    "sysinternals": "https://gitee.com/scoop-installer/scoop-sysinternals",
+    "php": "https://gitee.com/scoop-installer/PHP",
+    "nerd-fonts": "https://gitee.com/scoop-installer/scoop-nerd-fonts",
+    "nonportable": "https://gitee.com/scoop-installer/Nonportable",
+    "java": "https://gitee.com/scoop-installer/Java",
+    "games": "https://gitee.com/scoop-installer/scoop-games"
 }

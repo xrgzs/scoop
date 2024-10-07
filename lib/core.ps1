@@ -46,6 +46,135 @@ function Set-PESubsystem($filePath, $targetSubsystem) {
     return $true
 }
 
+function Url_Proxy($url) {
+    try {
+        # 获取客户端IP信息
+        $ipInfo = ConvertFrom-Json $(Invoke-WebRequest -Uri 'http://ip-api.com/json' -Method Get -UseBasicParsing).Content
+        # 提取国家代码
+        $loc = $ipInfo.countryCode
+    } catch {
+        # 如果获取失败，默认为 'OUT'
+        $loc = 'OUT'
+    }
+
+    # 获取客户端ip属地
+    $region = 'Unknown'
+    foreach ($url in ('https://cf-ns.com/cdn-cgi/trace', 'https://dash.cloudflare.com/cdn-cgi/trace', 'https://1.0.0.1/cdn-cgi/trace')) {
+        try {
+            $ipapi = Invoke-RestMethod -Uri $url -TimeoutSec 5 -UseBasicParsing
+            if ($ipapi -match 'loc=(\w+)' ) {
+                $region = $Matches[1]
+                break
+            }
+        } catch {
+            Write-Host "Error occurred while querying $url : $_"
+        }
+    }
+    $region
+    # 如果不在 CN，则使用直连
+    if ($region -ne 'CN') {
+        success "direct (Not in CN): $url"
+        return $url
+    }
+    # 如果在 CN，则使用加速地址
+    # 定义替换规则的映射表
+    $replacementMap = @{
+        # GitHub Releases
+        'github\.com/.+/releases/.*download'                                   = 'gh.xrgzs.top/https://$1'
+
+        # GitHub Archive
+        'github\.com/.+/archive/'                                              = 'gh.xrgzs.top/https://$1'
+
+        # GitHub Raw
+        'raw\.githubusercontent\.com'                                          = 'gh.xrgzs.top/https://$1'
+        'github\.com/.+/raw/'                                                  = 'gh.xrgzs.top/https://$1'
+
+        # SourceForge
+        # Use jaist
+        # 'downloads\.sourceforge\.net/project/.+'   = 'https://$1?use_mirror=jaist'
+        # 'sourceforge\.net/projects/.+/files/.+'    = 'https://$1/download?use_mirror=jaist'
+
+        # KDE Apps
+        'download\.kde\.org'                                                   = 'mirrors.ustc.edu.cn/kde'
+
+        # 7-Zip
+        'www\.7-zip\.org/a'                                                    = 'mirror.nju.edu.cn/7-zip'
+
+        # LaTeX, MiKTeX
+        'miktex\.org/download/ctan'                                            = 'mirrors.aliyun.com/CTAN'
+        'mirrors.+/CTAN'                                                       = 'mirrors.aliyun.com/CTAN'
+
+        # Node
+        'nodejs\.org/dist'                                                     = 'npmmirror.com/mirrors/node'
+
+        # Python
+        'www\.python\.org/ftp/python'                                          = 'npmmirror.com/mirrors/python'
+
+        # Go
+        'dl\.google\.com/go'                                                   = 'mirrors.aliyun.com/golang'
+
+        # VLC
+        'download\.videolan\.org/pub'                                          = 'mirrors.aliyun.com/videolan'
+
+        # Inkscape
+        'media\.inkscape\.org/dl/resources/file'                               = 'mirrors.nju.edu.cn/inkscape'
+
+        # DBeaver
+        'dbeaver\.io/files'                                                    = 'gh.xrgzs.top/https://github.com/dbeaver/dbeaver/releases/download'
+
+        # OBS Studio
+        'cdn-fastly\.obsproject\.com/downloads/OBS-Studio-(.+)-Windows\.zip'   = 'gh.xrgzs.top/https://github.com/obsproject/obs-studio/releases/download/$1/OBS-Studio-$1-Windows.zip'
+        'cdn-fastly\.obsproject\.com/downloads/OBS-Studio-(.+)-Full'           = 'gh.xrgzs.top/https://github.com/obsproject/obs-studio/releases/download/$1/OBS-Studio-$1-Full'
+
+        # GIMP
+        'download\.gimp\.org/mirror/pub'                                       = 'mirrors.aliyun.com/gimp'
+
+        # Blender
+        'download\.blender\.org'                                               = 'mirrors.aliyun.com/blender'
+
+        # VirtualBox
+        'download\.virtualbox\.org/virtualbox'                                 = 'mirrors.nju.edu.cn/virtualbox'
+
+        # Lunacy
+        'lun-eu\.icons8\.com/s/'                                               = 'lcdn.icons8.com/'
+
+        # Strawberry
+        'files\.jkvinge\.net/packages/strawberry/StrawberrySetup-(.+)-mingw-x' = 'gh.xrgzs.top/https://github.com/strawberrymusicplayer/strawberry/releases/download/$1/StrawberrySetup-$1-mingw-x'
+
+        # SumatraPDF
+        'files\.sumatrapdfreader\.org/file/kjk-files/software/sumatrapdf/rel'  = 'www.sumatrapdfreader.org/dl/rel'
+
+        # Vim
+        'ftp\.nluug\.nl/pub/vim/pc'                                            = 'mirrors.ustc.edu.cn/vim/pc'
+
+        # Cygwin
+        '//.*/cygwin/'                                                         = '//mirrors.aliyun.com/cygwin/'
+
+        # Tor Browser, Tor
+        'archive\.torproject\.org/tor-package-archive'                         = 'tor.ybti.net/dist'
+
+        # FastCopy
+        'fastcopy\.jp/archive'                                                 = 'gh.xrgzs.top/https://raw.githubusercontent.com/FastCopyLab/FastCopyDist2/main'
+
+        # Kodi
+        'mirrors\.kodi\.tv'                                                    = 'mirrors.tuna.tsinghua.edu.cn/kodi'
+
+        # Typora
+        'download\.typora\.io'                                                 = 'download2.typoraio.cn'
+    }
+
+    # 循环处理每个替换规则
+    foreach ($pattern in $replacementMap.Keys) {
+        if ($url -match $pattern) {
+            $url = $url -replace $pattern, $replacementMap[$pattern]
+            success "Proxy: Replaced $pattern with $url"
+            break
+        }
+    }
+    # 返回处理后的URL
+    return $url
+}
+
 function Optimize-SecurityProtocol {
     # .NET Framework 4.7+ has a default security protocol called 'SystemDefault',
     # which allows the operating system to choose the best protocol to use.

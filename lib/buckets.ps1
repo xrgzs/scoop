@@ -146,7 +146,8 @@ function add_bucket($name, $repo) {
         }
     }
 
-    Write-Host 'Checking repo... ' -NoNewline
+    $repo = Url_Proxy($repo)
+	Write-Host 'Checking repo... ' -NoNewline
     $out = Invoke-Git -ArgumentList @('ls-remote', $repo) 2>&1
     if ($LASTEXITCODE -ne 0) {
         error "'$repo' doesn't look like a valid git repository`n`nError given:`n$out"
