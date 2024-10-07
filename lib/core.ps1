@@ -47,30 +47,19 @@ function Set-PESubsystem($filePath, $targetSubsystem) {
 }
 
 function Url_Proxy($url) {
-    try {
-        # 获取客户端IP信息
-        $ipInfo = ConvertFrom-Json $(Invoke-WebRequest -Uri 'http://ip-api.com/json' -Method Get -UseBasicParsing).Content
-        # 提取国家代码
-        $loc = $ipInfo.countryCode
-    } catch {
-        # 如果获取失败，默认为 'OUT'
-        $loc = 'OUT'
-    }
-
     # 获取客户端ip属地
     $region = 'Unknown'
-    foreach ($url in ('https://cf-ns.com/cdn-cgi/trace', 'https://dash.cloudflare.com/cdn-cgi/trace', 'https://1.0.0.1/cdn-cgi/trace')) {
+    foreach ($ipapi in ('https://cf-ns.com/cdn-cgi/trace', 'https://dash.cloudflare.com/cdn-cgi/trace', 'https://1.0.0.1/cdn-cgi/trace')) {
         try {
-            $ipapi = Invoke-RestMethod -Uri $url -TimeoutSec 5 -UseBasicParsing
+            $ipapi = Invoke-RestMethod -Uri $ipapi -TimeoutSec 5 -UseBasicParsing
             if ($ipapi -match 'loc=(\w+)' ) {
                 $region = $Matches[1]
                 break
             }
         } catch {
-            Write-Host "Error occurred while querying $url : $_"
+            Write-Host "Error occurred while querying $ipapi : $_"
         }
     }
-    $region
     # 如果不在 CN，则使用直连
     if ($region -ne 'CN') {
         success "direct (Not in CN): $url"
