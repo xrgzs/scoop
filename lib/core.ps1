@@ -69,14 +69,14 @@ function Url_Proxy($url) {
     # 定义替换规则的映射表
     $replacementMap = @{
         # GitHub Releases
-        'github\.com/.+/releases/.*download'                                   = 'gh.xrgzs.top/https://$1'
+        'https?://github\.com/.+/releases/.*download'                                   = 'gh.xrgzs.top/https://$1'
 
         # GitHub Archive
-        'github\.com/.+/archive/'                                              = 'gh.xrgzs.top/https://$1'
+        'https?://github\.com/.+/archive/'                                              = 'gh.xrgzs.top/https://$1'
 
         # GitHub Raw
-        'raw\.githubusercontent\.com'                                          = 'gh.xrgzs.top/https://$1'
-        'github\.com/.+/raw/'                                                  = 'gh.xrgzs.top/https://$1'
+        'https?://raw\.githubusercontent\.com'                                          = 'gh.xrgzs.top/https://$1'
+        'https?://github\.com/.+/raw/'                                                  = 'gh.xrgzs.top/https://$1'
 
         # SourceForge
         # Use jaist
