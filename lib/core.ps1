@@ -50,9 +50,9 @@ function Url_Proxy($url) {
     # 获取客户端ip属地
     # $ip = ''
     $region = 'Unknown'
-    foreach ($ipapi in ('https://dash.cloudflare.com/cdn-cgi/trace', 'https://cf-ns.com/cdn-cgi/trace','https://1.0.0.1/cdn-cgi/trace')) {
+    foreach ($ipapi in ('https://dash.cloudflare.com/cdn-cgi/trace', 'https://www.cloudflare-cn.com/cdn-cgi/trace','https://1.0.0.1/cdn-cgi/trace')) {
         try {
-            $ipapi = Invoke-RestMethod -Uri $ipapi -TimeoutSec 5 -UseBasicParsing
+            $ipapi = Invoke-RestMethod -Uri $ipapi -TimeoutSec 3 -UseBasicParsing
             # if ($ipapi -match 'ip=([\d.]+)' ) {
             #     $ip = $Matches[1]
             # }
@@ -155,11 +155,11 @@ function Url_Proxy($url) {
 
     # 进一步获取IP类型
     try {
-        $ipInfo = Invoke-RestMethod -Uri "https://api.ip.sb/geoip/" -UseBasicParsing -TimeoutSec 5 -UserAgent 'curl/8.8.0'
+        $ipInfo = Invoke-RestMethod -Uri "https://api.ip.sb/geoip/" -UseBasicParsing -TimeoutSec 3 -UserAgent 'curl/8.8.0'
     }
     catch {
         try {
-            $ipInfo = Invoke-RestMethod -Uri "https://realip.cc/" -UseBasicParsing -TimeoutSec 5 -UserAgent 'curl/8.8.0'
+            $ipInfo = Invoke-RestMethod -Uri "https://realip.cc/" -UseBasicParsing -TimeoutSec 3 -UserAgent 'curl/8.8.0'
         }
         catch {
             $ipInfo = @{ isp = 'Unknown' }
