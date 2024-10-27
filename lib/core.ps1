@@ -155,14 +155,20 @@ function Url_Proxy($url) {
 
     # 进一步获取IP类型
     try {
-        $ipInfo = Invoke-RestMethod -Uri "https://api.ip.sb/geoip/" -UseBasicParsing -TimeoutSec 3 -UserAgent 'curl/8.8.0'
+        $ipInfo = Invoke-RestMethod -Uri "https://cloudflare-ip.html.zone/geo" -UseBasicParsing -TimeoutSec 3 -UserAgent 'curl/8.8.0'
+        $ipInfo | Add-Member -NotePropertyName isp -NotePropertyValue $ipInfo.asOrganization
     }
     catch {
         try {
-            $ipInfo = Invoke-RestMethod -Uri "https://realip.cc/" -UseBasicParsing -TimeoutSec 3 -UserAgent 'curl/8.8.0'
+            $ipInfo = Invoke-RestMethod -Uri "https://api.ip.sb/geoip/" -UseBasicParsing -TimeoutSec 3 -UserAgent 'curl/8.8.0'
         }
         catch {
-            $ipInfo = @{ isp = 'Unknown' }
+            try {
+                $ipInfo = Invoke-RestMethod -Uri "https://realip.cc/" -UseBasicParsing -TimeoutSec 3 -UserAgent 'curl/8.8.0'
+            }
+            catch {
+                $ipInfo = @{ isp = 'Unknown' }
+            }
         }
     }
 
