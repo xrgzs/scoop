@@ -70,19 +70,62 @@ function Url_Proxy($url) {
         return $url
     }
     # 如果在 CN，则使用加速地址
-    success "[UrlProxy] You are in CN."
+    info "[UrlProxy] You are in CN."
+
+    # 进一步获取IP类型
+    try {
+        info "[UrlProxy] Detecting IP information (API: html.zone)..."
+        $ipInfo = Invoke-RestMethod -Uri "https://cloudflare-ip.html.zone/geo" -UseBasicParsing -TimeoutSec 3 -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.95 Safari/537.36'
+        $ipInfo | Add-Member -NotePropertyName isp -NotePropertyValue $ipInfo.asOrganization
+    }
+    catch {
+        error "[UrlProxy] Failed to detect IP information. (API: html.zone)"
+        debug "$_"
+        try {
+            info "[UrlProxy] Detecting IP information (API: ip.sb)..."
+            $ipInfo = Invoke-RestMethod -Uri "https://api.ip.sb/geoip/" -UseBasicParsing -TimeoutSec 3 -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.95 Safari/537.36'
+        }
+        catch {
+            error "[UrlProxy] Failed to detect IP information. (API: ip.sb)"
+            debug "$_"
+            try {
+                info "[UrlProxy] Detecting IP information (API: realip.cc)..."
+                $ipInfo = Invoke-RestMethod -Uri "https://realip.cc/" -UseBasicParsing -TimeoutSec 3 -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.95 Safari/537.36'
+            }
+            catch {
+                error "[UrlProxy] Failed to detect IP information. (API: realip.cc)"
+                debug "$_"
+                $ipInfo = @{ isp = 'Unknown' }
+            }
+        }
+    }
+
+    # 根据 ISP 选择Github加速地址
+    $ghproxy = 'gh.xrgzs.top'
+    if ($ipInfo.isp -like '*China Mobile*') {
+        info "[UrlProxy] Detected as China Mobile Network"
+        $ghproxy = 'ghp.ci'
+    } elseif ($ipInfo.isp -like '*China Telecom*') {
+        info "[UrlProxy] Detected as China Telecom Network"
+        $ghproxy = 'ghproxy.cc'
+    } elseif ($ipInfo.isp -like '*China Unicom*') {
+        info "[UrlProxy] Detected as China Unicom Network"
+        $ghproxy = 'ghproxy.cc'
+    } else {
+        error "[UrlProxy] Can not get your ISP."
+    }
 
     # 定义替换规则的映射表
     $replacementMap = @{
         # GitHub Releases
-        '(^https?://github\.com/.+/releases/.*download)'                         = 'https://gh.xrgzs.top/$1'
+        '(^https?://github\.com/.+/releases/.*download)'                         = 'https://'+$ghproxy+'/$1'
 
         # GitHub Archive
-        '(^https?://github\.com/.+/archive/)'                                    = 'https://gh.xrgzs.top/$1'
+        '(^https?://github\.com/.+/archive/)'                                    = 'https://'+$ghproxy+'/$1'
 
         # GitHub Raw
-        '(^https?://raw\.githubusercontent\.com)'                                = 'https://gh.xrgzs.top/$1'
-        '(^https?://github\.com/.+/raw/)'                                        = 'https://gh.xrgzs.top/$1'
+        '(^https?://raw\.githubusercontent\.com)'                                = 'https://'+$ghproxy+'/$1'
+        '(^https?://github\.com/.+/raw/)'                                        = 'https://'+$ghproxy+'/$1'
 
         # KDE Apps
         'download\.kde\.org'                                                     = 'mirrors.ustc.edu.cn/kde'
@@ -110,11 +153,11 @@ function Url_Proxy($url) {
         'media\.inkscape\.org/dl/resources/file'                                 = 'mirrors.nju.edu.cn/inkscape'
 
         # DBeaver
-        'dbeaver\.io/files'                                                      = 'gh.xrgzs.top/https://github.com/dbeaver/dbeaver/releases/download'
+        'dbeaver\.io/files'                                                      = $ghproxy+'/https://github.com/dbeaver/dbeaver/releases/download'
 
         # OBS Studio
-        '(cdn-fastly\.obsproject\.com/downloads/OBS-Studio-(.+)-Windows\.zip)'   = 'gh.xrgzs.top/https://github.com/obsproject/obs-studio/releases/download/$1/OBS-Studio-$1-Windows.zip'
-        '(cdn-fastly\.obsproject\.com/downloads/OBS-Studio-(.+)-Full)'           = 'gh.xrgzs.top/https://github.com/obsproject/obs-studio/releases/download/$1/OBS-Studio-$1-Full'
+        '(cdn-fastly\.obsproject\.com/downloads/OBS-Studio-(.+)-Windows\.zip)'   = $ghproxy+'/https://github.com/obsproject/obs-studio/releases/download/$1/OBS-Studio-$1-Windows.zip'
+        '(cdn-fastly\.obsproject\.com/downloads/OBS-Studio-(.+)-Full)'           = $ghproxy+'/https://github.com/obsproject/obs-studio/releases/download/$1/OBS-Studio-$1-Full'
 
         # GIMP
         'download\.gimp\.org/mirror/pub'                                         = 'mirrors.aliyun.com/gimp'
@@ -129,7 +172,7 @@ function Url_Proxy($url) {
         'lun-eu\.icons8\.com/s/'                                                 = 'lcdn.icons8.com/'
 
         # Strawberry
-        '(files\.jkvinge\.net/packages/strawberry/StrawberrySetup-(.+)-mingw-x)' = 'gh.xrgzs.top/https://github.com/strawberrymusicplayer/strawberry/releases/download/$1/StrawberrySetup-$1-mingw-x'
+        '(files\.jkvinge\.net/packages/strawberry/StrawberrySetup-(.+)-mingw-x)' = $ghproxy+'/https://github.com/strawberrymusicplayer/strawberry/releases/download/$1/StrawberrySetup-$1-mingw-x'
 
         # SumatraPDF
         'files\.sumatrapdfreader\.org/file/kjk-files/software/sumatrapdf/rel'    = 'www.sumatrapdfreader.org/dl/rel'
@@ -144,7 +187,7 @@ function Url_Proxy($url) {
         'archive\.torproject\.org/tor-package-archive'                           = 'tor.ybti.net/dist'
 
         # FastCopy
-        'fastcopy\.jp/archive'                                                   = 'gh.xrgzs.top/https://raw.githubusercontent.com/FastCopyLab/FastCopyDist2/main'
+        'fastcopy\.jp/archive'                                                   = $ghproxy+'/https://raw.githubusercontent.com/FastCopyLab/FastCopyDist2/main'
 
         # Kodi
         'mirrors\.kodi\.tv'                                                      = 'mirrors.tuna.tsinghua.edu.cn/kodi'
@@ -153,28 +196,8 @@ function Url_Proxy($url) {
         'download\.typora\.io'                                                   = 'download2.typoraio.cn'
     }
 
-    # 进一步获取IP类型
-    try {
-        $ipInfo = Invoke-RestMethod -Uri "https://cloudflare-ip.html.zone/geo" -UseBasicParsing -TimeoutSec 3 -UserAgent 'curl/8.8.0'
-        $ipInfo | Add-Member -NotePropertyName isp -NotePropertyValue $ipInfo.asOrganization
-    }
-    catch {
-        try {
-            $ipInfo = Invoke-RestMethod -Uri "https://api.ip.sb/geoip/" -UseBasicParsing -TimeoutSec 3 -UserAgent 'curl/8.8.0'
-        }
-        catch {
-            try {
-                $ipInfo = Invoke-RestMethod -Uri "https://realip.cc/" -UseBasicParsing -TimeoutSec 3 -UserAgent 'curl/8.8.0'
-            }
-            catch {
-                $ipInfo = @{ isp = 'Unknown' }
-            }
-        }
-    }
-
     # 移动网络特殊处理
     if ($ipInfo.isp -like '*China Mobile*') {
-        success "[UrlProxy] Detected as China Mobile Network"
         $replacementMap += @{
             # SourceForge
             # Use liquidtelecom
@@ -188,7 +211,8 @@ function Url_Proxy($url) {
     foreach ($pattern in $replacementMap.Keys) {
         if ($url -match $pattern) {
             $url = $url -replace $pattern, $replacementMap[$pattern]
-            success "[UrlProxy] Hit: $pattern"
+            info "[UrlProxy] Hit: $pattern"
+            success "[UrlProxy] Result: $url"
             break
         }
     }
