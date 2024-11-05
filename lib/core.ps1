@@ -74,12 +74,12 @@ function Url_Proxy($url) {
 
     # 进一步获取IP类型
     try {
-        info "[UrlProxy] Detecting IP information (API: html.zone)..."
-        $ipInfo = Invoke-RestMethod -Uri "https://cloudflare-ip.html.zone/geo" -UseBasicParsing -TimeoutSec 3 -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.95 Safari/537.36'
-        $ipInfo | Add-Member -NotePropertyName isp -NotePropertyValue $ipInfo.asOrganization
+        info "[UrlProxy] Detecting IP information (API: ipwho.is)..."
+        $ipInfo = Invoke-RestMethod -Uri "https://ipwho.is/" -UseBasicParsing -TimeoutSec 3 -UserAgent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.95 Safari/537.36'
+        $ipInfo | Add-Member -NotePropertyName isp -NotePropertyValue $ipInfo.connection.isp
     }
     catch {
-        error "[UrlProxy] Failed to detect IP information. (API: html.zone)"
+        error "[UrlProxy] Failed to detect IP information. (API: ipwho.is)"
         debug "$_"
         try {
             info "[UrlProxy] Detecting IP information (API: ip.sb)..."
