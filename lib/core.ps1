@@ -104,7 +104,7 @@ function Url_Proxy($url) {
     $ghproxy = 'gh.xrgzs.top'
     if ($ipInfo.isp -like '*China Mobile*') {
         info "[UrlProxy] Detected as China Mobile Network"
-        $ghproxy = 'ghp.ci'
+        # $ghproxy = 'ghp.ci'
     } elseif ($ipInfo.isp -like '*China Telecom*') {
         info "[UrlProxy] Detected as China Telecom Network"
         $ghproxy = 'ghproxy.cc'
