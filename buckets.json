@@ -1,5 +1,6 @@
 {
     "main": "https://gitee.com/scoop-installer/Main",
+    "sdoog": "https://github.com/xrgzs/sdoog",
     "extras": "https://gitee.com/scoop-installer/Extras",
     "versions": "https://gitee.com/scoop-installer/Versions",
     "nirsoft": "https://gitee.com/scoop-installer/Nirsoft",
