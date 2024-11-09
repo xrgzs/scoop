@@ -194,6 +194,7 @@ function Sync-Bucket {
             $innerBucketLoc = Find-BucketDirectory $name
 
             $previousCommit = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', 'HEAD')
+            Invoke-Git -Path $bucketLoc -ArgumentList @('reset', '--hard', 'origin/HEAD', '-q')
             Invoke-Git -Path $bucketLoc -ArgumentList @('pull', '-q')
             if ($using:Log) {
                 Invoke-GitLog -Path $bucketLoc -Name $name -CommitHash $previousCommit
@@ -225,6 +226,7 @@ function Sync-Bucket {
             $innerBucketLoc = Find-BucketDirectory $name
 
             $previousCommit = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', 'HEAD')
+            Invoke-Git -Path $bucketLoc -ArgumentList @('reset', '--hard', 'origin/HEAD', '-q')
             Invoke-Git -Path $bucketLoc -ArgumentList @('pull', '-q')
             if ($Log) {
                 Invoke-GitLog -Path $bucketLoc -Name $name -CommitHash $previousCommit
