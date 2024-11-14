@@ -105,7 +105,7 @@ function Url_Proxy($url) {
     if ($ipInfo.isp -like '*China Mobile*') {
         info "[UrlProxy] Detected as China Mobile Network"
         # $ghproxy = 'ghp.ci'
-    } elseif ($ipInfo.isp -like '*China Telecom*') {
+    } elseif ($ipInfo.isp -like '*China Telecom*' -or $ipInfo.isp -like '*Chinanet*') {
         info "[UrlProxy] Detected as China Telecom Network"
         $ghproxy = 'ghproxy.cc'
     } elseif ($ipInfo.isp -like '*China Unicom*') {
@@ -156,8 +156,8 @@ function Url_Proxy($url) {
         'dbeaver\.io/files'                                                      = $ghproxy+'/https://github.com/dbeaver/dbeaver/releases/download'
 
         # OBS Studio
-        '(cdn-fastly\.obsproject\.com/downloads/OBS-Studio-(.+)-Windows\.zip)'   = $ghproxy+'/https://github.com/obsproject/obs-studio/releases/download/$1/OBS-Studio-$1-Windows.zip'
-        '(cdn-fastly\.obsproject\.com/downloads/OBS-Studio-(.+)-Full)'           = $ghproxy+'/https://github.com/obsproject/obs-studio/releases/download/$1/OBS-Studio-$1-Full'
+        'cdn-fastly\.obsproject\.com/downloads/OBS-Studio-(.+)-Windows\.zip'     = $ghproxy+'/https://github.com/obsproject/obs-studio/releases/download/$1/OBS-Studio-$1-Windows.zip'
+        'cdn-fastly\.obsproject\.com/downloads/OBS-Studio-(.+)-Full'             = $ghproxy+'/https://github.com/obsproject/obs-studio/releases/download/$1/OBS-Studio-$1-Full'
 
         # GIMP
         'download\.gimp\.org/mirror/pub'                                         = 'mirrors.aliyun.com/gimp'
@@ -172,7 +172,7 @@ function Url_Proxy($url) {
         'lun-eu\.icons8\.com/s/'                                                 = 'lcdn.icons8.com/'
 
         # Strawberry
-        '(files\.jkvinge\.net/packages/strawberry/StrawberrySetup-(.+)-mingw-x)' = $ghproxy+'/https://github.com/strawberrymusicplayer/strawberry/releases/download/$1/StrawberrySetup-$1-mingw-x'
+        'files\.jkvinge\.net/packages/strawberry/StrawberrySetup-(.+)-mingw-x'   = $ghproxy+'/https://github.com/strawberrymusicplayer/strawberry/releases/download/$1/StrawberrySetup-$1-mingw-x'
 
         # SumatraPDF
         'files\.sumatrapdfreader\.org/file/kjk-files/software/sumatrapdf/rel'    = 'www.sumatrapdfreader.org/dl/rel'
