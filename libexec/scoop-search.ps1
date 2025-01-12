@@ -157,7 +157,21 @@ function search_remotes($query) {
     $remote_list
 }
 
-if (get_config USE_SQLITE_CACHE) {
+if (Get-Command 'scoop-search' -ErrorAction Ignore) {
+    $scoopSearchOutput = scoop-search $query
+    foreach ($line in $scoopSearchOutput -split "`n") {
+        if ($line -match "'(?<bucket>.+)' bucket:") {
+            $currentBucket = $matches.bucket
+        } elseif ($line -match "    (?<name>.+) \((?<version>.+)\)( --> includes '(?<binary>.+)')?") {
+            $list.Add([PSCustomObject]@{
+                Name     = $matches.name
+                Version  = $matches.version
+                Source   = $currentBucket
+                Binaries = if ($matches.binary) { $matches.binary } else { $null }
+            })
+        }
+    }
+} elseif (get_config USE_SQLITE_CACHE) {
     . "$PSScriptRoot\..\lib\database.ps1"
     Select-ScoopDBItem $query -From @('name', 'binary', 'shortcut') |
         Select-Object -Property name, version, bucket, binary |
