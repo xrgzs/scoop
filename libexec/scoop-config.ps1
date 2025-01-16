@@ -33,6 +33,9 @@
 # no_junction: $true|$false
 #       The 'current' version alias will not be used. Shims and shortcuts will point to specific version instead.
 #
+# desktop_shortcut: $true|$false
+#       Create desktop shortcuts. Copy startmenu shortcuts to desktop automatically.
+#
 # scoop_repo: http://github.com/ScoopInstaller/Scoop
 #       Git repository containining scoop source code.
 #       This configuration is useful for custom forks.

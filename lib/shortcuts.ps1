@@ -28,6 +28,15 @@ function shortcut_folder($global) {
     return Convert-Path (ensure ([System.IO.Path]::Combine([Environment]::GetFolderPath($startmenu), 'Programs', 'Scoop Apps')))
 }
 
+function desktop_folder($global) {
+    if ($global) {
+        $desktop = 'CommonDesktopDirectory'
+    } else {
+        $desktop = 'DesktopDirectory'
+    }
+    return Convert-Path ([Environment]::GetFolderPath($desktop))
+}
+
 function startmenu_shortcut([System.IO.FileInfo] $target, $shortcutName, $arguments, [System.IO.FileInfo]$icon, $global) {
     if (!$target.Exists) {
         Write-Host -f DarkRed "Creating shortcut for $shortcutName ($(fname $target)) failed: Couldn't find $target"
@@ -56,6 +65,15 @@ function startmenu_shortcut([System.IO.FileInfo] $target, $shortcutName, $argume
     }
     $wsShell.Save()
     Write-Host "Creating shortcut for $shortcutName ($(fname $target))"
+    if (get_config DESKTOP_SHORTCUT) {
+        Write-Host "Creating desktop shortcut for $shortcutName ($(fname $target))"
+        $scoop_desktop_folder = desktop_folder $global
+        $subdirectory = [System.IO.Path]::GetDirectoryName($shortcutName)
+        if ($subdirectory) {
+            $subdirectory = ensure $([System.IO.Path]::Combine($scoop_desktop_folder, $subdirectory))
+        }
+        Copy-Item "$scoop_startmenu_folder\$shortcutName.lnk" "$scoop_desktop_folder\$shortcutName.lnk" -Force
+    }
 }
 
 # Removes the Startmenu shortcut if it exists
@@ -67,6 +85,13 @@ function rm_startmenu_shortcuts($manifest, $global, $arch) {
         Write-Host "Removing shortcut $(friendly_path $shortcut)"
         if (Test-Path -Path $shortcut) {
             Remove-Item $shortcut
+        }
+        if (get_config DESKTOP_SHORTCUT) {
+            $desktop_shortcut = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath("$(desktop_folder $global)\$name.lnk")
+            Write-Host "Removing desktop shortcut $(friendly_path $desktop_shortcut)"
+            if (Test-Path -Path $desktop_shortcut) {
+                Remove-Item $desktop_shortcut
+            }
         }
     }
 }
