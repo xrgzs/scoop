@@ -1,148 +1,119 @@
-<h1 align="center">Scoop</h1>
+# Scoop 特供优化版
 
-<!--<img src="scoop.png" alt="Long live Scoop!"/>-->
-<p align="center">
-        <a href="https://github.com/ScoopInstaller/Scoop#what-does-scoop-do">Features</a>
-        |
-        <a href="https://github.com/ScoopInstaller/Scoop#installation">Installation</a>
-        |
-        <a href="https://github.com/ScoopInstaller/Scoop/wiki">Documentation</a>
-</p>
+Scoop 修改优化特供版。通过第三方方式解决痛点问题，让您轻松使用 Scoop。
 
----
+## 特点
 
-<p align="center">
-    <a href="https://github.com/ScoopInstaller/Scoop">
-        <img src="https://img.shields.io/github/languages/code-size/ScoopInstaller/Scoop.svg" alt="Code Size" />
-    </a>
-    <a href="https://github.com/ScoopInstaller/Scoop">
-        <img src="https://img.shields.io/github/repo-size/ScoopInstaller/Scoop.svg" alt="Repository size" />
-    </a>
-    <a href="https://github.com/ScoopInstaller/Scoop/actions/workflows/ci.yml">
-        <img src="https://github.com/ScoopInstaller/Scoop/actions/workflows/ci.yml/badge.svg" alt="Scoop Core CI Tests" />
-    </a>
-    <a href="https://discord.gg/s9yRQHt">
-        <img src="https://img.shields.io/badge/chat-on%20discord-7289DA.svg" alt="Discord Chat" />
-    </a>
-    <a href="https://gitter.im/lukesampson/scoop">
-        <img src="https://badges.gitter.im/lukesampson/scoop.png" alt="Gitter Chat" />
-    </a>
-    <a href="./LICENSE">
-        <img src="https://img.shields.io/badge/license-UNLICENSE%20or%20MIT-blue" alt="License" />
-    </a>
-</p>
+1. 添加 hook，自动判断并替换下载链接为国内源，无需替换 Bucket，让您不再使用“垃圾桶”；基于 ISP 检测，加速策略更为精准
 
-Scoop is a command-line installer for Windows.
+   - 支持自定义 GitHub Proxy 加速镜像地址，只需执行 `scoop config GH_PROXY ghproxy.cc` 设置即可
 
-## What does Scoop do?
+   - 如果出现下载出错、校验错误的情况，可以执行 `scoop config URL_REPLACE false` 关闭此功能
 
-Scoop installs apps from the command line with a minimal amount of friction. It:
+   - 如有镜像站软件未替换，欢迎提 issue
 
-- Eliminates [User Account Control](https://learn.microsoft.com/windows/security/application-security/application-control/user-account-control/) (UAC) prompt notifications.
-- Hides the graphical user interface (GUI) of wizard-style installers.
-- Prevents polluting the `PATH` environment variable. Normally, this variable gets cluttered as different apps are installed on the device.
-- Avoids unexpected side effects from installing and uninstalling apps.
-- Resolves and installs dependencies automatically.
-- Performs all the necessary steps to get an app to a working state.
+2. 执行 `scoop search` 时优先调用 [scoop-search](https://github.com/shilangyu/scoop-search) 执行搜索，速度更快
 
-Scoop is quite script-friendly. Your environment can become the way you like by using repeatable setups. For example:
+   - 优先级：`scoop-search` > `PowerShell Core` > `Windows PowerShell`
 
-```console
-scoop install sudo
-sudo scoop install 7zip git openssh --global
-scoop install aria2 curl grep sed less touch
-scoop install python ruby go perl
-```
+3. 执行 `scoop update` 时不使用 `git pull` 同步 Bucket，无需手动解决 commit 冲突
 
-If you have built software that you would like others to use, Scoop is an alternative to building an installer (like MSI or InnoSetup). You just need to compress your app to a `.zip` file and provide a JSON manifest that describes how to install it.
+4. ~~执行 `scoop update` 时优先调用 [hok](https://github.com/chawyehsu/hok) 使用 Rust Git2 多线程同步 Bucket~~ (暂时停用)
 
-## Installation
+   - 优先级：`PowerShell Core + Git` 多线程 > `Windows PowerShell + Git` 单线程
 
-Run the following commands from a regular (non-admin) PowerShell terminal to install Scoop:
+5. 支持自动创建桌面快捷方式
+
+   - 启用：`scoop config DESKTOP_SHORTCUT true` （安装脚本默认配置）
+
+   - 禁用：`scoop config DESKTOP_SHORTCUT false` 或 `scoop config rm DESKTOP_SHORTCUT`
+
+6. 支持自动创建控制面板卸载程序快捷方式，可通过控制面板卸载/重设应用
+
+   - 优先级：首个快捷方式名称 > 应用名称，使用 `scoop_` + 应用名称 作为注册表项，使用 bucket 名称作为发布者
+
+   - 启用：`scoop config UNINSTALL_SHORTCUT true` （安装脚本默认配置）
+
+   - 禁用：`scoop config UNINSTALL_SHORTCUT false` 或 `scoop config rm UNINSTALL_SHORTCUT`
+
+7. 仓库同步到 [Gitee](https://gitee.com/xrgzs/scoop)，方便国内用户更新规则
+
+   - 切换到 GitHub 版本：`scoop config scoop_repo 'https://github.com/xrgzs/scoop'`
+
+8. 安装脚本自动配置好 `7zip`、`git`、`aria2`、`scoop-search`，并做好相关优化
+
+9. 安装脚本支持管理员权限安装，自动修复 Scoop 文件 ACL 到当前用户
+
+## 安装
+
+### 默认安装
+
+安装脚本适配 PowerShell 2.0 及更高版本，支持 Windows 7 SP1 及更高版本。
 
 ```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
+irm c.xrgzs.top/c/scoop | iex
 ```
 
-**Note**: The first command makes your device allow running the installation and management scripts. This is necessary because Windows 10 client devices restrict execution of any PowerShell scripts by default.
+Win7 SP1 (PowerShell 2.0) 及更高版本：
 
-It will install Scoop to its default location:
-
-`C:\Users\<YOUR USERNAME>\scoop`
-
-You can find the complete documentation about the installer, including advanced installation configurations, in [ScoopInstaller/Install](https://github.com/ScoopInstaller/Install). Please create new issues there if you have questions about the installation.
-
-## Multi-connection downloads with `aria2`
-
-Scoop can utilize [`aria2`](https://github.com/aria2/aria2) to use multi-connection downloads. Simply install `aria2` through Scoop and it will be used for all downloads afterward.
-
-```console
-scoop install aria2
+```powershell
+(New-Object System.Net.WebClient).DownloadString('http://c.xrgzs.top/c/scoop') | iex
 ```
 
-By default, `scoop` displays a warning when running `scoop install` or `scoop update` while `aria2` is enabled. This warning can be suppressed by running `scoop config aria2-warning-enabled false`.
+对于未安装 PowerShell 5.1 的系统，我们将自动安装 PowerShell 7.2，并强制使用 PowerShell 7.2 执行 Scoop。
 
-You can tweak the following `aria2` settings with the `scoop config` command:
+对于 Windows PE，需要补全 `C:\Windows\System32\Robocopy.exe` 才可安装 Scoop。
 
-- aria2-enabled (default: true)
-- aria2-warning-enabled (default: true)
-- [aria2-retry-wait](https://aria2.github.io/manual/en/html/aria2c.html#cmdoption-retry-wait) (default: 2)
-- [aria2-split](https://aria2.github.io/manual/en/html/aria2c.html#cmdoption-s) (default: 5)
-- [aria2-max-connection-per-server](https://aria2.github.io/manual/en/html/aria2c.html#cmdoption-x) (default: 5)
-- [aria2-min-split-size](https://aria2.github.io/manual/en/html/aria2c.html#cmdoption-k) (default: 5M)
-- [aria2-options](https://aria2.github.io/manual/en/html/aria2c.html#options) (default: )
+### 增加指定软件
 
-## Inspiration
+多个可用空格分隔。
 
-- [Homebrew](https://brew.sh/)
-- [Sub](https://signalvnoise.com/posts/3264-automating-with-convention-introducing-sub)
-
-## What sort of apps can Scoop install?
-
-The apps that are most likely to get installed fine with Scoop are those referred to as "portable" apps. These apps are compressed files which can run standalone after being extracted. This type of apps does not produce side effects like changing the Windows Registry or placing files outside the app directory.
-
-Scoop also supports installer files and their uninstallation methods. Likewise, it can handle single-file apps and PowerShell scripts. These do not even need to be compressed. See the [runat](https://github.com/ScoopInstaller/Main/blob/master/bucket/runat.json) package for an example: it is simply a GitHub gist.
-
-### Contribute to this project
-
-If you would like to improve Scoop by adding features or fixing bugs, please read our [Contributing Guide](https://github.com/ScoopInstaller/.github/blob/main/.github/CONTRIBUTING.md).
-
-### Support this project
-
-If you find Scoop useful and would like to support the ongoing development and maintenance of this project, you can donate here:
-
-- [PayPal](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=DM2SUH9EUXSKJ) (one-time donations)
-
-## Known application buckets
-
-The following buckets are known to Scoop:
-
-- [main](https://github.com/ScoopInstaller/Main) - Default bucket which contains popular non-GUI apps.
-- [extras](https://github.com/ScoopInstaller/Extras) - Apps that do not fit the main bucket's [criteria](https://github.com/ScoopInstaller/Scoop/wiki/Criteria-for-including-apps-in-the-main-bucket).
-- [games](https://github.com/Calinou/scoop-games) - Open-source and freeware video games and game-related tools.
-- [nerd-fonts](https://github.com/matthewjberger/scoop-nerd-fonts) -  Nerd Fonts.
-- [nirsoft](https://github.com/ScoopInstaller/Nirsoft) - A collection of over 250+ apps from [Nirsoft](https://nirsoft.net).
-- [sysinternals](https://github.com/niheaven/scoop-sysinternals) - The Sysinternals suite from [Microsoft](https://learn.microsoft.com/sysinternals/).
-- [java](https://github.com/ScoopInstaller/Java) - A collection of Java development kits (JDKs) and Java runtime engines (JREs), Java's virtual machine debugging tools and Java based runtime engines.
-- [nonportable](https://github.com/ScoopInstaller/Nonportable) - Non-portable apps (may trigger UAC prompts).
-- [php](https://github.com/ScoopInstaller/PHP) - Installers for most versions of PHP.
-- [versions](https://github.com/ScoopInstaller/Versions) - Alternative versions of apps found in other buckets.
-
-The `main` bucket is installed by default. You can make use of more buckets by typing:
-
-```console
-scoop bucket add <name>
+```powershell
+iex "& { $(irm c.xrgzs.top/c/scoop) } -Append xrok"
 ```
 
-For example, to add the `extras` bucket, type:
+### 精简安装
 
-```console
-scoop bucket add extras
+仅安装主程序、git、aria2，添加 main 和 sdoog。
+
+```powershell
+iex "& { $(irm c.xrgzs.top/c/scoop) } -Slim"
 ```
 
-You would be able to install apps from the `extras` bucket now.
+### 设置安装路径
 
-## Other application buckets
+安装到 D 盘。
 
-Many other application buckets hosted on GitHub can be found on [ScoopSearch](https://scoop.sh/) or via [other search engines](https://rasa.github.io/scoop-directory/#other-search-engines).
+```powershell
+iex "& { $(irm c.xrgzs.top/c/scoop) } -ScoopDir 'D:\Scoop' -ScoopGlobalDir 'D:\ScoopGlobal'"
+```
+
+### 切换到此版本
+
+如果已经安装 Scoop，可以切换到此专用版本。
+
+```powershell
+# scoop config scoop_repo "https://gh.xrgzs.top/https://github.com/xrgzs/scoop"
+scoop config scoop_repo 'https://gitee.com/xrgzs/scoop'
+scoop config scoop_branch 'master'
+
+scoop update
+```
+
+### 强制更新
+
+如果您的 Scoop 无法更新，可以执行以下命令强制更新 Scoop：
+
+```powershell
+Remove-Item -Path "~\scoop\apps\scoop\current\.git\" -Recurse -Force
+scoop update
+```
+
+或：
+
+```powershell
+Push-Location "~\scoop\apps\scoop\current\"
+git fetch origin master
+git reset --hard origin/master
+Pop-Location
+```

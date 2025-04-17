@@ -42,7 +42,7 @@ $all = $opt.a -or $opt.all
 # load config
 $configRepo = get_config SCOOP_REPO
 if (!$configRepo) {
-    $configRepo = 'https://github.com/ScoopInstaller/Scoop'
+    $configRepo = 'https://gitee.com/xrgzs/scoop'
     set_config SCOOP_REPO $configRepo | Out-Null
 }
 
@@ -104,7 +104,7 @@ function Sync-Scoop {
 
         $previousCommit = Invoke-Git -Path $currentdir -ArgumentList @('rev-parse', 'HEAD')
         $currentRepo = Invoke-Git -Path $currentdir -ArgumentList @('config', 'remote.origin.url')
-        $currentBranch = Invoke-Git -Path $currentdir -ArgumentList @('branch')
+        $currentBranch = Invoke-Git -Path $currentdir -ArgumentList @('rev-parse', '--abbrev-ref', 'HEAD')
 
         $isRepoChanged = !($currentRepo -match $configRepo)
         $isBranchChanged = !($currentBranch -match "\*\s+$configBranch")
@@ -136,7 +136,9 @@ function Sync-Scoop {
             # reset branch HEAD
             Invoke-Git -Path $currentdir -ArgumentList @('reset', '--hard', "origin/$configBranch", '-q')
         } else {
-            Invoke-Git -Path $currentdir -ArgumentList @('pull', '--tags', '--force', '-q')
+            # Invoke-Git -Path $currentdir -ArgumentList @('pull', '--tags', '--force', '-q')
+            Invoke-Git -Path $currentdir -ArgumentList @('fetch', 'origin', $currentBranch, '-q')
+            Invoke-Git -Path $currentdir -ArgumentList @('reset', '--hard', "origin/$currentBranch", '-q')
         }
 
         $res = $lastexitcode
@@ -170,6 +172,11 @@ function Sync-Bucket {
         }
     }
 
+    # if (Get-Command 'hok' -ErrorAction Ignore) {
+    #     info '[hok] Using git2-rs...'
+    #     hok update
+    #     return
+    # }
 
     $buckets = Get-LocalBucket | ForEach-Object {
         $path = Find-BucketDirectory $_ -Root
@@ -195,7 +202,10 @@ function Sync-Bucket {
             $innerBucketLoc = Find-BucketDirectory $name
 
             $previousCommit = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', 'HEAD')
-            Invoke-Git -Path $bucketLoc -ArgumentList @('pull', '-q')
+            $currentBranch = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', '--abbrev-ref', 'HEAD')
+            Invoke-Git -Path $bucketLoc -ArgumentList @('fetch', 'origin', $currentBranch, '-q')
+            Invoke-Git -Path $bucketLoc -ArgumentList @('reset', '--hard', "origin/$currentBranch", '-q')
+            # Invoke-Git -Path $bucketLoc -ArgumentList @('pull', '-q')
             if ($using:Log) {
                 Invoke-GitLog -Path $bucketLoc -Name $name -CommitHash $previousCommit
             }
@@ -226,7 +236,10 @@ function Sync-Bucket {
             $innerBucketLoc = Find-BucketDirectory $name
 
             $previousCommit = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', 'HEAD')
-            Invoke-Git -Path $bucketLoc -ArgumentList @('pull', '-q')
+            $currentBranch = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', '--abbrev-ref', 'HEAD')
+            Invoke-Git -Path $bucketLoc -ArgumentList @('fetch', 'origin', $currentBranch, '-q')
+            Invoke-Git -Path $bucketLoc -ArgumentList @('reset', '--hard', "origin/$currentBranch", '-q')
+            # Invoke-Git -Path $bucketLoc -ArgumentList @('pull', '-q')
             if ($Log) {
                 Invoke-GitLog -Path $bucketLoc -Name $name -CommitHash $previousCommit
             }
