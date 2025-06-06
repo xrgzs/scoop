@@ -95,3 +95,52 @@ function rm_startmenu_shortcuts($manifest, $global, $arch) {
         }
     }
 }
+
+function create_uninstall_shortcuts($app, $manifest, $bucket, $version, $dir, $global, $arch) {
+    $name = $app
+    $icon = $null
+    $shortcut = @(arch_specific 'shortcuts' $manifest $arch) | Where-Object { $_ -ne $null } | Select-Object -First 1
+    if ($shortcut) {
+        $icon = [System.IO.Path]::Combine($dir, $shortcut.item(0))
+        $name = [System.IO.Path]::GetFileNameWithoutExtension($shortcut.item(1))
+        if ($shortcut.length -ge 4) {
+            $icon = [System.IO.Path]::Combine($dir, $shortcut.item(3))
+        }
+    }
+    Write-Host "Creating uninstall shortcut for $name to control panel"
+    if ($global) {
+        $regpath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\scoop_$app"
+        $modifyPathValue = "cmd.exe /c `"sudo scoop reset `"$app`"`""
+        $uninstallStringValue = "cmd.exe /c `"sudo scoop uninstall `"$app`" -p -g`""
+    } else {
+        $regpath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\scoop_$app"
+        $modifyPathValue = "cmd.exe /c `"scoop reset `"$app`"`""
+        $uninstallStringValue = "cmd.exe /c `"scoop uninstall `"$app`" -p`""
+    }
+    Remove-Item -Path $regpath -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path $regpath -Force | Out-Null
+    New-ItemProperty -Path $regpath -Name 'DisplayName' -Value "$name (Scoop)" -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $regpath -Name 'DisplayVersion' -Value $version -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $regpath -Name 'ModifyPath' -Value $modifyPathValue -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $regpath -Name 'UninstallString' -Value $uninstallStringValue -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $regpath -Name 'Publisher' -Value $bucket -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $regpath -Name 'InstallDate' -Value (Get-Date -Format yyyyMMdd) -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $regpath -Name 'InstallLocation' -Value $dir -PropertyType String -Force | Out-Null
+    New-ItemProperty -Path $regpath -Name 'EstimatedSize' -Value ((Get-ChildItem $dir -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1KB) -PropertyType DWord -Force | Out-Null
+    if ($icon) {
+        New-ItemProperty -Path $regpath -Name 'DisplayIcon' -Value $icon -PropertyType String -Force | Out-Null
+    }
+    if ($manifest.homepage) {
+        New-ItemProperty -Path $regpath -Name 'URLInfoAbout' -Value $manifest.homepage -PropertyType String -Force | Out-Null
+    }
+}
+
+function rm_uninstall_shortcuts($app, $global) {
+    Write-Host "Removing uninstall shortcut for $app from control panel"
+    if ($global) {
+        $regpath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\scoop_$app"
+    } else {
+        $regpath = "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\scoop_$app"
+    }
+    Remove-Item -Path $regpath -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+}
