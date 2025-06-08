@@ -124,8 +124,8 @@ function search_remote($bucket, $query) {
         $repo_name = $Matches[2]
         $api_link = "https://api.github.com/repos/$user/$repo_name/git/trees/HEAD?recursive=1"
         $result = download_json $api_link | Select-Object -ExpandProperty tree |
-            Where-Object -Value "^bucket/(.*$query.*)\.json$" -Property Path -Match |
-            ForEach-Object { $Matches[1] }
+        Where-Object -Value "^bucket/(.*$query.*)\.json$" -Property Path -Match |
+        ForEach-Object { $Matches[1] }
     }
 
     $result
@@ -156,18 +156,32 @@ function search_remotes($query) {
     $remote_list
 }
 
-if (get_config USE_SQLITE_CACHE) {
-    . "$PSScriptRoot\..\lib\database.ps1"
-    Select-ScoopDBItem $query -From @('name', 'binary', 'shortcut') |
-        Select-Object -Property name, version, bucket, binary |
-        ForEach-Object {
+if (Get-Command 'scoop-search' -ErrorAction Ignore) {
+    $scoopSearchOutput = scoop-search $query
+    foreach ($line in $scoopSearchOutput -split "`n") {
+        if ($line -match "'(?<bucket>.+)' bucket:") {
+            $currentBucket = $matches.bucket
+        } elseif ($line -match "    (?<name>.+) \((?<version>.+)\)( --> includes '(?<binary>.+)')?") {
             $list.Add([PSCustomObject]@{
-                    Name     = $_.name
-                    Version  = $_.version
-                    Source   = $_.bucket
-                    Binaries = $_.binary
+                    Name     = $matches.name
+                    Version  = $matches.version
+                    Source   = $currentBucket
+                    Binaries = if ($matches.binary) { $matches.binary } else { $null }
                 })
         }
+    }
+} elseif (get_config USE_SQLITE_CACHE) {
+    . "$PSScriptRoot\..\lib\database.ps1"
+    Select-ScoopDBItem $query -From @('name', 'binary', 'shortcut') |
+    Select-Object -Property name, version, bucket, binary |
+    ForEach-Object {
+        $list.Add([PSCustomObject]@{
+                Name     = $_.name
+                Version  = $_.version
+                Source   = $_.bucket
+                Binaries = $_.binary
+            })
+    }
 } else {
     try {
         $query = New-Object Regex $query, 'IgnoreCase'
