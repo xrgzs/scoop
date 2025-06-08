@@ -117,40 +117,45 @@ function search_bucket_legacy($bucket, $query) {
     }
 }
 
-function search_remote($bucket, $query) {
-    $uri = [System.Uri](known_bucket_repo $bucket)
-    if ($uri.AbsolutePath -match '/([a-zA-Z0-9]*)/([a-zA-Z0-9-]*)(?:.git|/)?') {
-        $user = $Matches[1]
-        $repo_name = $Matches[2]
-        $api_link = "https://api.github.com/repos/$user/$repo_name/git/trees/HEAD?recursive=1"
-        $result = download_json $api_link | Select-Object -ExpandProperty tree |
-        Where-Object -Value "^bucket/(.*$query.*)\.json$" -Property Path -Match |
-        ForEach-Object { $Matches[1] }
+function search_azure($body) {
+    $api_link = 'https://scoopsearch.search.windows.net/indexes/apps/docs/search?api-version=2020-06-30'
+    $api_key = 'DC6D2BBE65FC7313F2C52BBD2B0286ED'
+    return Invoke-RestMethod -Uri $api_link -Method Post -Body $body -Headers @{
+        'api-key'      = $api_key
+        'Content-Type' = 'application/json'
     }
-
-    $result
+}
+function get_large_buckets {
+    $results = search_azure('{"count":true,"facets":["Metadata/Repository,count:10000"],"filter":"Metadata/OfficialRepositoryNumber eq 0","top":0}')
+    $buckets = @()
+    $results.'@search.facets'.'Metadata/Repository' | ForEach-Object {
+        if ($_.count -gt 5000) {
+            $buckets += $_.value
+        }
+    }
+    return $buckets
 }
 
 function search_remotes($query) {
-    $buckets = known_bucket_repos
-    $names = $buckets | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty name
-
-    $results = $names | Where-Object { !(Test-Path $(Find-BucketDirectory $_)) } | ForEach-Object {
-        @{ 'bucket' = $_; 'results' = (search_remote $_ $query) }
-    } | Where-Object { $_.results }
-
-    if ($results.count -gt 0) {
-        Write-Host "Results from other known buckets...`n(add them using 'scoop bucket add <bucket name>')"
-    }
-
+    $body = @{
+        count      = $true
+        search     = $query
+        searchMode = 'all'
+        # filter     = 'Metadata/OfficialRepositoryNumber eq 1'
+        top        = 20
+        select     = 'Name,Version,Metadata/Repository,Metadata/RepositoryStars'
+    } | ConvertTo-Json -Compress
+    $results = search_azure($body)
     $remote_list = @()
-    $results | ForEach-Object {
-        $bucket = $_.bucket
-        $_.results | ForEach-Object {
-            $item = [ordered]@{}
-            $item.Name = $_
-            $item.Source = $bucket
-            $remote_list += [PSCustomObject]$item
+    $trash_bucket = get_large_buckets
+    $results.value | ForEach-Object {
+        if ($_.Metadata.Repository -notin $trash_bucket) {
+            $remote_list += [PSCustomObject]@{
+                Name    = $_.Name
+                Version = $_.Version
+                Source  = $_.Metadata.Repository
+                Stars   = $_.Metadata.RepositoryStars
+            }
         }
     }
     $remote_list
@@ -205,12 +210,13 @@ if ($list.Count -gt 0) {
     $list
 }
 
-if ($list.Count -eq 0 -and !(github_ratelimit_reached)) {
+if ($list.Count -eq 0) {
     $remote_results = search_remotes $query
     if (!$remote_results) {
         warn 'No matches found.'
         exit 1
     }
+    Write-Host "Results from remote buckets...`n(add them using 'scoop bucket add <Source>')"
     $remote_results
 }
 
