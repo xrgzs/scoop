@@ -811,7 +811,7 @@ function url_replace($url) {
         'download\.documentfoundation\.org/libreoffice'                        = 'mirrors.cernet.edu.cn/libreoffice/libreoffice'
 
         # Typora
-        'download\.typora\.io'                                                 = 'download2.typoraio.cn'
+        'download\.typora\.io'                                                 = 'downloads.typoraio.cn'
     }
 
     # 循环处理每个替换规则
