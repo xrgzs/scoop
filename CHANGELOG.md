@@ -2,6 +2,7 @@
 
 ### Features
 
+- **scoop-uninstall**: Allow access to `$bucket` in uninstall scripts ([#6380](https://github.com/ScoopInstaller/Scoop/issues/6380))
 - **install:** Add separator at the end of notes, highlight suggestions ([#6418](https://github.com/ScoopInstaller/Scoop/issues/6418))
 
 ### Bug Fixes
