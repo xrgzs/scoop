@@ -10,6 +10,7 @@
 . "$PSScriptRoot\..\lib\manifest.ps1" # 'Get-Manifest' 'Select-CurrentVersion' (indirectly)
 . "$PSScriptRoot\..\lib\system.ps1"
 . "$PSScriptRoot\..\lib\install.ps1"
+. "$PSScriptRoot\..\lib\download.ps1" # url_filename
 . "$PSScriptRoot\..\lib\shortcuts.ps1"
 . "$PSScriptRoot\..\lib\psmodules.ps1"
 . "$PSScriptRoot\..\lib\versions.ps1" # 'Select-CurrentVersion'
@@ -78,7 +79,9 @@ if (!$apps) { exit 0 }
         Invoke-Installer -Path $dir -Manifest $manifest -ProcessorArchitecture $architecture -Global:$global -Uninstall
         rm_shims $app $manifest $global $architecture
         rm_startmenu_shortcuts $manifest $global $architecture
-
+        if (get_config UNINSTALL_SHORTCUT) {
+            rm_uninstall_shortcuts $app $global
+        }
         # If a junction was used during install, that will have been used
         # as the reference directory. Otherwise it will just be the version
         # directory.
