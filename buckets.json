@@ -11,5 +11,6 @@
     "nonportable": "https://gitee.com/scoop-installer/Nonportable",
     "java": "https://gitee.com/scoop-installer/Java",
     "games": "https://gitee.com/scoop-installer/scoop-games",
-    "ar": "https://github.com/arch3rPro/PST-Bucket"
+    "ar": "https://github.com/arch3rPro/PST-Bucket",
+    "lemon": "https://github.com/hoilc/scoop-lemon"
 }
