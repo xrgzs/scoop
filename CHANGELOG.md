@@ -8,6 +8,7 @@
 
 ### Bug Fixes
 
+- **core:** Fix the grep parameter in the `Invoke-GitLog` function ([#6407](https://github.com/ScoopInstaller/Scoop/issues/6407))
 - **buckets:** Fix the filtering condition when retrieving the number of manifests ([#6509](https://github.com/ScoopInstaller/Scoop/issues/6509))
 - **scoop-download:** Fix function `nightly_version` not defined error ([#6386](https://github.com/ScoopInstaller/Scoop/issues/6386))
 - **scoop-uninstall:** Correct `-Global` Switch ([#6454](https://github.com/ScoopInstaller/Scoop/issues/6454))
