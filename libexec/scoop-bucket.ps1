@@ -45,6 +45,10 @@ switch ($cmd) {
                 $usage_add
                 exit 1
             }
+            $ghproxy = get_config GH_PROXY
+            if ($ghproxy) {
+                $repo = $repo -replace 'https?://github.com/', ('https://' + $ghproxy + '/https://github.com/')
+            }
         }
         $status = add_bucket $name $repo
         exit $status

@@ -58,6 +58,9 @@ function install_app($app, $architecture, $global, $suggested, $use_cache = $tru
     $dir = link_current $dir
     create_shims $manifest $dir $global $architecture
     create_startmenu_shortcuts $manifest $dir $global $architecture
+    if (get_config UNINSTALL_SHORTCUT) {
+        create_uninstall_shortcuts $app $manifest $bucket $version $dir $global $architecture
+    }
     install_psmodule $manifest $dir $global
     env_add_path $manifest $dir $global $architecture
     env_set $manifest $global $architecture

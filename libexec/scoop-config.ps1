@@ -33,6 +33,12 @@
 # no_junction: $true|$false
 #       The 'current' version alias will not be used. Shims and shortcuts will point to specific version instead.
 #
+# desktop_shortcut: $true|$false
+#       Create desktop shortcuts. Copy startmenu shortcuts to desktop automatically.
+#
+# uninstall_shortcut: $true|$false
+#       Create uninstall shortcuts at 'Control Panel/Programs/Programs and Features'.
+#
 # scoop_repo: http://github.com/ScoopInstaller/Scoop
 #       Git repository containining scoop source code.
 #       This configuration is useful for custom forks.
@@ -49,6 +55,10 @@
 #       * To use the system proxy settings configured in Internet Options, use 'default' in place of host:port
 #       * An empty or unset value for proxy is equivalent to 'default' (with no username or password)
 #       * To bypass the system proxy and connect directly, use 'none' (with no username or password)
+#
+# url_replace: $true|$false
+#       Disable url replace module.
+#       It is useful when autodetect gets wrong result.
 #
 # autostash_on_conflict: $true|$false
 #       When a conflict is detected during updating, Scoop will auto-stash the uncommitted changes.
@@ -87,6 +97,11 @@
 #       GitHub API token used to make authenticated requests.
 #       This is essential for checkver and similar functions to run without
 #       incurring rate limits and download from private repositories.
+#
+# gh_proxy:
+#       Configure your own Github Proxy. Do not use 'http://' or 'https://' prefix.
+#       Default: gh.xrgzs.top (Auto jump)
+#       For self-hosting, See: https://github.com/hunshcn/gh-proxy
 #
 # virustotal_api_key:
 #       API key used for uploading/scanning files using virustotal.
