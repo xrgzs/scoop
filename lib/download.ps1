@@ -2,6 +2,8 @@
 
 ## Meta downloader
 
+. "$PSScriptRoot\mirror.ps1"
+
 function Invoke-ScoopDownload ($app, $version, $manifest, $bucket, $architecture, $dir, $use_cache = $true, $check_hash = $true) {
     # we only want to show this warning once
     if (!$use_cache) { warn 'Cache is being ignored.' }
@@ -88,7 +90,7 @@ function Start-Download ($url, $to, $cookies) {
 
 function Invoke-Download ($url, $to, $cookies, $progress) {
     # download with filesize and progress indicator
-    $reqUrl = ($url -split '#')[0]
+    $reqUrl = url_replace(($url -split '#')[0])
     $wreq = [Net.WebRequest]::Create($reqUrl)
     if ($wreq -is [Net.HttpWebRequest]) {
         $wreq.UserAgent = Get-UserAgent
@@ -402,7 +404,7 @@ function Invoke-CachedAria2Download ($app, $version, $manifest, $architecture, $
                     warn 'Token might be misconfigured.'
                 }
             }
-            $urlstxt_content += "$try_url`n"
+            $urlstxt_content += "$(url_replace $try_url)`n"
             if (!$url.Contains('sourceforge.net')) {
                 $urlstxt_content += "    referer=$(strip_filename $url)`n"
             }
@@ -508,6 +510,9 @@ function Invoke-CachedAria2Download ($app, $version, $manifest, $architecture, $
                 }
                 if ($url.Contains('sourceforge.net')) {
                     Write-Host -f yellow 'SourceForge.net is known for causing hash validation fails. Please try again before opening a ticket.'
+                }
+                if (get_config URL_REPLACE -ne $False) {
+                    Write-Host -f yellow '[UrlReplace] is known for causing hash validation fails. Please try again before opening a ticket. You can disable this module by "scoop config url_replace false".'
                 }
                 abort $(new_issue_msg $app $bucket 'hash check failed')
             }
@@ -637,6 +642,7 @@ function handle_special_urls($url) {
     return $url
 }
 
+
 ### Remote file information
 
 function download_json($url) {
@@ -672,7 +678,7 @@ function get_magic_bytes_pretty($file, $glue = ' ') {
     return (get_magic_bytes $file | ForEach-Object { $_.ToString('x2') }) -join $glue
 }
 
-Function Get-RemoteFileSize ($Uri) {
+function Get-RemoteFileSize ($Uri) {
     $response = Invoke-WebRequest -Uri $Uri -Method HEAD -UseBasicParsing
     if (!$response.Headers.StatusCode) {
         $response.Headers.'Content-Length' | ForEach-Object { [int]$_ }
@@ -695,13 +701,13 @@ function url_remote_filename($url) {
     # this function extracts the original filename from the URL.
     $uri = (New-Object URI $url)
     $basename = Split-Path $uri.PathAndQuery -Leaf
-    If ($basename -match '.*[?=]+([\w._-]+)') {
+    if ($basename -match '.*[?=]+([\w._-]+)') {
         $basename = $matches[1]
     }
-    If (($basename -notlike '*.*') -or ($basename -match '^[v.\d]+$')) {
+    if (($basename -notlike '*.*') -or ($basename -match '^[v.\d]+$')) {
         $basename = Split-Path $uri.AbsolutePath -Leaf
     }
-    If (($basename -notlike '*.*') -and ($uri.Fragment -ne '')) {
+    if (($basename -notlike '*.*') -and ($uri.Fragment -ne '')) {
         $basename = $uri.Fragment.Trim('/', '#')
     }
     return $basename
