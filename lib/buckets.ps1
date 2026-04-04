@@ -1,3 +1,5 @@
+. "$PSScriptRoot\mirror.ps1"
+
 $bucketsdir = "$scoopdir\buckets"
 
 function Find-BucketDirectory {
@@ -114,7 +116,7 @@ function list_buckets {
             $bucket.Updated = (Get-Item "$path\bucket" -ErrorAction SilentlyContinue).LastWriteTime
         }
         $bucket.Manifests = Get-ChildItem -Path "$path\bucket" -Filter "*.json" -File -Force -Recurse -ErrorAction SilentlyContinue |
-                Measure-Object | Select-Object -ExpandProperty Count
+        Measure-Object | Select-Object -ExpandProperty Count
         $buckets += [PSCustomObject]$bucket
     }
     ,$buckets
@@ -131,7 +133,7 @@ function add_bucket($name, $repo) {
         warn "The '$name' bucket already exists. To add this bucket again, first remove it by running 'scoop bucket rm $name'."
         return 2
     }
-
+    $repo = url_replace $repo
     $uni_repo = Convert-RepositoryUri -Uri $repo
     if ($null -eq $uni_repo) {
         return 1
@@ -154,7 +156,7 @@ function add_bucket($name, $repo) {
     }
     ensure $bucketsdir | Out-Null
     $dir = ensure $dir
-    $out = Invoke-Git -ArgumentList @('clone', $repo, $dir, '-q')
+    $out = Invoke-Git -ArgumentList @('clone', $repo, $dir)
     if ($LASTEXITCODE -ne 0) {
         error "Failed to clone '$repo' to '$dir'.`n`nError given:`n$out`n`nPlease check the repository URL or network connection and try again."
         Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
