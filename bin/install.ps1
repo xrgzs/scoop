@@ -1,6 +1,6 @@
 <#
 .DESCRIPTION
-    Xiaoran System Scoop Deployment Script
+    Xiaoran System Scoop Deployment Script v26.4.13.4
 .EXAMPLE
     # Default installation
     irm c.xrgzs.top/c/scoop | iex
@@ -68,6 +68,55 @@ function Test-IsAdministrator {
 function Update-Env {
     # Update PATH via registry
     $Env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path', 'User')
+}
+
+function Test-ScoopHealthy {
+    param (
+        [Parameter(Mandatory = $True)]
+        [String] $ScoopRoot
+    )
+
+    if (-not (Test-CommandAvailable scoop)) {
+        return $false
+    }
+
+    $RequiredPaths = @(
+        "$ScoopRoot\apps\scoop\current\bin\scoop.ps1",
+        "$ScoopRoot\shims\scoop.ps1",
+        "$ScoopRoot\shims\scoop.cmd"
+    )
+    foreach ($Path in $RequiredPaths) {
+        if (-not (Test-Path -Path $Path)) {
+            return $false
+        }
+    }
+
+    try {
+        scoop --version *> $null
+        if ($LASTEXITCODE -ne 0) {
+            return $false
+        }
+    } catch {
+        return $false
+    }
+
+    return $true
+}
+
+function Remove-BrokenScoop {
+    param (
+        [Parameter(Mandatory = $True)]
+        [String] $ScoopRoot
+    )
+
+    Write-Warning 'Detected Scoop installation but it looks broken. Cleaning and reinstalling...'
+    Remove-Item "$ScoopRoot\shims\scoop" -Force -ErrorAction SilentlyContinue | Out-Null
+    Remove-Item "$ScoopRoot\shims\scoop.ps1" -Force -ErrorAction SilentlyContinue | Out-Null
+    Remove-Item "$ScoopRoot\shims\scoop.cmd" -Force -ErrorAction SilentlyContinue | Out-Null
+    Remove-Item "$ScoopRoot\apps\scoop\current" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+    Remove-Item "$ScoopRoot\apps\scoop\new" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+    Remove-Item "$ScoopRoot\apps\scoop\old" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+    Remove-Item "$ScoopRoot\buckets\main" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 }
 
 # Import functional functions
@@ -139,7 +188,6 @@ function Get-Aria2 {
 
 
 function Install-Scoop {
-
     # Tls12
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
 
@@ -149,7 +197,7 @@ function Install-Scoop {
     $ScoopInstallerScript = Invoke-RestMethod "$GitHubProxy/https://raw.githubusercontent.com/scoopinstaller/install/master/install.ps1" -UseBasicParsing
     $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_REPO = ').*?(?=')", "$GitHubProxy/https://github.com/xrgzs/scoop/archive/master.zip"
     $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_REPO = ').*?(?=')", "$GitHubProxy/https://github.com/ScoopInstaller/Main/archive/master.zip"
-    $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_GIT_REPO = ').*?(?=')", "https://gitcode.com/xrgzs/scoop.git"
+    $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_GIT_REPO = ').*?(?=')", 'https://gitcode.com/xrgzs/scoop.git'
     $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_GIT_REPO = ').*?(?=')", "$GitHubProxy/https://github.com/ScoopInstaller/Main.git"
 
     # $ScoopInstallerScript = Invoke-RestMethod http://c.xrgzs.top/c/scoop-installer.ps1
@@ -280,10 +328,19 @@ if (Test-CommandAvailable git.exe) {
 
 # Determine if Scoop needs to be installed
 if (Test-CommandAvailable scoop) {
-    Write-Host 'Scoop has already been installed.' -ForegroundColor Green
-    Remove-Item "$SCOOP_DIR\apps\scoop\current\.git" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+    if (Test-ScoopHealthy -ScoopRoot $SCOOP_DIR) {
+        Write-Host 'Scoop has already been installed.' -ForegroundColor Green
+        Remove-Item "$SCOOP_DIR\apps\scoop\current\.git" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+        Remove-Item "$SCOOP_DIR\apps\scoop\new" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+        Remove-Item "$SCOOP_DIR\apps\scoop\old" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+    } else {
+        Remove-BrokenScoop -ScoopRoot $SCOOP_DIR
+        while (-not (Test-ScoopHealthy -ScoopRoot $SCOOP_DIR)) {
+            Install-Scoop
+        }
+    }
 } else {
-    while (-not (Test-CommandAvailable scoop)) {
+    while (-not (Test-ScoopHealthy -ScoopRoot $SCOOP_DIR)) {
         Install-Scoop
     }
 }
@@ -327,7 +384,8 @@ while (-not (Test-CommandAvailable git.exe)) {
     scoop install git
     reg.exe import "$SCOOP_DIR\apps\git\current\install-context.reg" *>$null
     reg.exe import "$SCOOP_DIR\apps\git\current\install-file-associations.reg" *>$null
-    git config --global credential.helper manager
+    # set Git Credential Manager Core for portable Git
+    git config --system credential.helper manager
 }
 
 # Avoid Windows connection issues due to schannel problems
