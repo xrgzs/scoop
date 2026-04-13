@@ -178,6 +178,15 @@ function url_replace($url) {
         'download\.typora\.io'                                                 = 'downloads.typoraio.cn'
     }
 
+    # SourceForge特殊处理
+    if ($ghproxy -eq 'gh.xrgzs.top') {
+        $replacementMap += @{
+            '(^https?://downloads\.sourceforge\.net/project/.+)' = 'https://' + $ghproxy + '/$1'
+            '(^https?://sourceforge\.net/projects/.+/files/.+)'  = 'https://' + $ghproxy + '/$1'
+            '(^https?://\w+\.dl\.sourceforge\.net/.+)'           = 'https://' + $ghproxy + '/$1'
+        }
+    }
+
     # 循环处理每个替换规则
     foreach ($pattern in $replacementMap.Keys) {
         if ($url -match $pattern) {
