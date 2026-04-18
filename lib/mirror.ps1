@@ -66,8 +66,8 @@ function url_replace($url) {
 
     # 定义替换规则的映射表
     $replacementMap = @{
-        # XRWEBAL
-        'alist\.xrgzs\.top/d/pxy'                                              = 'dl.xrgzs.top/d/pxy'
+        # XRWEBDL
+        'list\.xrgzs\.top/d/pxy'                                              = 'dl.xrgzs.top/d/pxy'
 
         # GitHub Clone
         '(^https?://github\.com/.+/.+$)'                                       = 'https://' + $ghproxy + '/$1'
