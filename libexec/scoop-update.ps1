@@ -193,6 +193,9 @@ function Sync-Bucket {
     $removedFiles = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
     if ($PSVersionTable.PSVersion.Major -ge 7) {
         # Parallel parameter is available since PowerShell 7
+
+        # make cache for Get-Region
+        $null = Get-Region
         $buckets | Where-Object { $_.valid } | ForEach-Object -ThrottleLimit 5 -Parallel {
             . "$using:PSScriptRoot\..\lib\core.ps1"
             . "$using:PSScriptRoot\..\lib\buckets.ps1"
@@ -203,18 +206,11 @@ function Sync-Bucket {
 
             $previousCommit = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', 'HEAD')
             $currentRepo = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'remote.origin.url')
-            if ($currentRepo -match 'https://gitee.com/scoop-installer/') {
-                warn "Bucket '$name' is using Gitee as the remote repository, which is no longer supported password-free cloning. Updating remote URL to GitHub..."
-                $currentRepo = $currentRepo -replace 'https://gitee.com/scoop-installer/scoop-sysinternals', 'https://github.com/niheaven/scoop-sysinternals'
-                $currentRepo = $currentRepo -replace 'https://gitee.com/scoop-installer/scoop-nerd-fonts', 'https://github.com/matthewjberger/scoop-nerd-fonts'
-                $currentRepo = $currentRepo -replace 'https://gitee.com/scoop-installer/scoop-games', 'https://github.com/Calinou/scoop-games'
-                $currentRepo = $currentRepo -replace 'https://gitee.com/scoop-installer/', 'https://github.com/ScoopInstaller/'
-                $ghproxy = get_config GH_PROXY
-                if ($ghproxy) {
-                    $currentRepo = $currentRepo -replace 'https?://github.com/', ('https://' + $ghproxy + '/https://github.com/')
+            if (-not (Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'http.proxy')) -or (Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'https.proxy'))) {
+                $_u = url_replace $currentRepo
+                if ($_u -ne $currentRepo) {
+                    Invoke-Git -Path $bucketLoc -ArgumentList @('remote', 'set-url', 'origin', $_u)
                 }
-                Invoke-Git -Path $bucketLoc -ArgumentList @('remote', 'set-url', 'origin', $currentRepo)
-                success "The remote URL of bucket '$name' has been updated to $currentRepo"
             }
             $currentBranch = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', '--abbrev-ref', 'HEAD')
             Invoke-Git -Path $bucketLoc -ArgumentList @('fetch', 'origin', $currentBranch, '-q')
@@ -251,18 +247,11 @@ function Sync-Bucket {
 
             $previousCommit = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', 'HEAD')
             $currentRepo = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'remote.origin.url')
-            if ($currentRepo -match 'https://gitee.com/scoop-installer/') {
-                warn "Bucket '$name' is using Gitee as the remote repository, which is no longer supported password-free cloning. Updating remote URL to GitHub..."
-                $currentRepo = $currentRepo -replace 'https://gitee.com/scoop-installer/scoop-sysinternals', 'https://github.com/niheaven/scoop-sysinternals'
-                $currentRepo = $currentRepo -replace 'https://gitee.com/scoop-installer/scoop-nerd-fonts', 'https://github.com/matthewjberger/scoop-nerd-fonts'
-                $currentRepo = $currentRepo -replace 'https://gitee.com/scoop-installer/scoop-games', 'https://github.com/Calinou/scoop-games'
-                $currentRepo = $currentRepo -replace 'https://gitee.com/scoop-installer/', 'https://github.com/ScoopInstaller/'
-                $ghproxy = get_config GH_PROXY
-                if ($ghproxy) {
-                    $currentRepo = $currentRepo -replace 'https?://github.com/', ('https://' + $ghproxy + '/https://github.com/')
+            if (-not (Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'http.proxy')) -or (Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'https.proxy'))) {
+                $_u = url_replace $currentRepo
+                if ($_u -ne $currentRepo) {
+                    Invoke-Git -Path $bucketLoc -ArgumentList @('remote', 'set-url', 'origin', $_u)
                 }
-                Invoke-Git -Path $bucketLoc -ArgumentList @('remote', 'set-url', 'origin', $currentRepo)
-                success "The remote URL of bucket '$name' has been updated to $currentRepo"
             }
             $currentBranch = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', '--abbrev-ref', 'HEAD')
             Invoke-Git -Path $bucketLoc -ArgumentList @('fetch', 'origin', $currentBranch, '-q')
