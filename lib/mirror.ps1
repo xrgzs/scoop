@@ -1,4 +1,25 @@
 
+function Get-Region {
+    if ($env:SCOOP_REGION) {
+        return $env:SCOOP_REGION
+    }
+    $region = 'Unknown'
+    foreach ($ipapi in ('https://dash.cloudflare.com/cdn-cgi/trace', 'https://www.cf-ns.com/cdn-cgi/trace', 'https://1.0.0.1/cdn-cgi/trace')) {
+        try {
+            $ipapi = Invoke-RestMethod -Uri $ipapi -TimeoutSec 1 -UseBasicParsing
+            if ($ipapi -match 'loc=(\w+)' ) {
+                $region = $Matches[1]
+                break
+            }
+        } catch {
+            $region = 'CN'
+        }
+    }
+    $env:SCOOP_REGION = $region
+    return $region
+}
+
+
 function Get-ISPName {
     try {
         info '[GetISP] Detecting ISP information (API: ipwho.is)...'
@@ -34,25 +55,19 @@ function url_replace($url) {
     }
     # 获取客户端ip属地
     # $ip = ''
-    info '[UrlReplace] Detecting IP region (API: Cloudflare)...'
-    $region = 'Unknown'
-    foreach ($ipapi in ('https://dash.cloudflare.com/cdn-cgi/trace', 'https://www.cf-ns.com/cdn-cgi/trace', 'https://1.0.0.1/cdn-cgi/trace')) {
-        try {
-            $ipapi = Invoke-RestMethod -Uri $ipapi -TimeoutSec 1 -UseBasicParsing
-            # if ($ipapi -match 'ip=([\d.]+)' ) {
-            #     $ip = $Matches[1]
-            # }
-            if ($ipapi -match 'loc=(\w+)' ) {
-                $region = $Matches[1]
-                break
-            }
-        } catch {
-            $region = 'CN'
-        }
-    }
-    # 如果不在 CN，则使用直连
+    info '[UrlReplace] Detecting IP region...'
+    $region = Get-Region
+    # 如果不在 CN，则使用直连，并去除已有的 ghproxy 前缀
     if ($region -ne 'CN') {
-        success '[UrlReplace] direct (Not in CN)'
+        $ghproxy = get_config GH_PROXY
+        if (!$ghproxy) { $ghproxy = 'gh.xrgzs.top' }
+        $prefix = "https://$ghproxy/"
+        if ($url.StartsWith($prefix)) {
+            $url = $url.Substring($prefix.Length)
+            success "[UrlReplace] Stripped ghproxy (Not in CN): $url"
+        } else {
+            success '[UrlReplace] direct (Not in CN)'
+        }
         return $url
     }
     # 如果在 CN，则使用加速地址
@@ -66,8 +81,14 @@ function url_replace($url) {
 
     # 定义替换规则的映射表
     $replacementMap = @{
-        # XRWEBAL
-        'alist\.xrgzs\.top/d/pxy'                                              = 'dl.xrgzs.top/d/pxy'
+        # Gitee → GitHub (已停止支持免密克隆)
+        'https://gitee\.com/scoop-installer/scoop-sysinternals'                 = 'https://github.com/niheaven/scoop-sysinternals'
+        'https://gitee\.com/scoop-installer/scoop-nerd-fonts'                   = 'https://github.com/matthewjberger/scoop-nerd-fonts'
+        'https://gitee\.com/scoop-installer/scoop-games'                        = 'https://github.com/Calinou/scoop-games'
+        'https://gitee\.com/scoop-installer/'                                   = 'https://github.com/ScoopInstaller/'
+
+        # XRWEBDL
+        'list\.xrgzs\.top/d/pxy'                                               = 'dl.xrgzs.top/d/pxy'
 
         # GitHub Clone
         '(^https?://github\.com/.+/.+$)'                                       = 'https://' + $ghproxy + '/$1'
@@ -100,7 +121,7 @@ function url_replace($url) {
         'www\.python\.org/ftp/python'                                          = 'npmmirror.com/mirrors/python'
 
         # Go
-        'dl\.google\.com/go'                                                   = 'mirrors.aliyun.com/golang'
+        'dl\.google\.com/go'                                                   = 'mirrors.nju.edu.cn/golang'
 
         # Flutter
         'storage\.googleapis\.com/flutter_infra'                               = 'storage.flutter-io.cn/flutter_infra'
@@ -113,7 +134,7 @@ function url_replace($url) {
         'dlcdn\.apache\.org'                                                   = 'mirrors.aliyun.com/apache'
 
         # Eclipse
-        'download\.eclipse\.org'                                               = 'mirrors.cernet.edu.cn/eclipse'
+        'download\.eclipse\.org'                                               = 'mirrors.nju.edu.cn/eclipse'
 
         # JetBrains
         # 'download\.jetbrains\.com'                                           = 'download-alibaba.jetbrains.com.cn'

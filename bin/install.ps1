@@ -1,6 +1,6 @@
 <#
 .DESCRIPTION
-    Xiaoran System Scoop Deployment Script v26.4.13.4
+    Xiaoran System Scoop Deployment Script v26.6.6.4
 .EXAMPLE
     # Default installation
     irm c.xrgzs.top/c/scoop | iex
@@ -92,8 +92,8 @@ function Test-ScoopHealthy {
     }
 
     try {
-        scoop --version *> $null
-        if ($LASTEXITCODE -ne 0) {
+        $versionOutput = & scoop --version 2>&1 | Out-String
+        if ($versionOutput -notmatch '\d+\.\d+') {
             return $false
         }
     } catch {
@@ -194,13 +194,13 @@ function Install-Scoop {
     # Install Scoop
     Write-Host 'Installing Scoop...' -ForegroundColor Cyan
 
-    $ScoopInstallerScript = Invoke-RestMethod "$GitHubProxy/https://raw.githubusercontent.com/scoopinstaller/install/master/install.ps1" -UseBasicParsing
-    $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_REPO = ').*?(?=')", "$GitHubProxy/https://github.com/xrgzs/scoop/archive/master.zip"
+    # $ScoopInstallerScript = Invoke-RestMethod "$GitHubProxy/https://raw.githubusercontent.com/scoopinstaller/install/master/install.ps1" -UseBasicParsing
+    $ScoopInstallerScript = Invoke-RestMethod http://c.xrgzs.top/c/scoop-installer.ps1
+	$ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_REPO = ').*?(?=')", "$GitHubProxy/https://github.com/xrgzs/scoop/archive/master.zip"
     $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_REPO = ').*?(?=')", "$GitHubProxy/https://github.com/ScoopInstaller/Main/archive/master.zip"
     $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_GIT_REPO = ').*?(?=')", 'https://gitcode.com/xrgzs/scoop.git'
     $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_GIT_REPO = ').*?(?=')", "$GitHubProxy/https://github.com/ScoopInstaller/Main.git"
 
-    # $ScoopInstallerScript = Invoke-RestMethod http://c.xrgzs.top/c/scoop-installer.ps1
     $ScoopInstaller = Join-Path $env:TEMP "scoop_installer_$(Get-Random).ps1"
     $ScoopInstallerScript | Out-File $ScoopInstaller
     . $ScoopInstaller -RunAsAdmin -ScoopDir $SCOOP_DIR -ScoopGlobalDir $SCOOP_GLOBAL_DIR -ScoopCacheDir $SCOOP_CACHE_DIR
@@ -217,6 +217,7 @@ function Install-Scoop {
 # Scoop root directory
 $SCOOP_DIR = $env:SCOOP = $ScoopDir, $env:SCOOP, "$env:USERPROFILE\scoop" | Where-Object { -not [String]::IsNullOrEmpty($_) } | Select-Object -First 1
 [Environment]::SetEnvironmentVariable('SCOOP', $SCOOP_DIR, 'User')
+$env:SCOOP = $SCOOP_DIR
 Write-Host "Scoop will install to $SCOOP_DIR"
 # Scoop global apps directory
 $SCOOP_GLOBAL_DIR = $ScoopGlobalDir, $env:SCOOP_GLOBAL, "$env:ProgramData\scoop" | Where-Object { -not [String]::IsNullOrEmpty($_) } | Select-Object -First 1
@@ -224,6 +225,25 @@ $SCOOP_GLOBAL_DIR = $ScoopGlobalDir, $env:SCOOP_GLOBAL, "$env:ProgramData\scoop"
 $SCOOP_CACHE_DIR = $ScoopCacheDir, $env:SCOOP_CACHE, "$SCOOP_DIR\cache" | Where-Object { -not [String]::IsNullOrEmpty($_) } | Select-Object -First 1
 # GitHub Proxy
 $GitHubProxy = $GitHubProxy, $env:GITHUB_PROXY, 'https://gh.xrgzs.top' | Where-Object { -not [String]::IsNullOrEmpty($_) } | Select-Object -First 1
+
+# Region detection: skip ghproxy if not in CN
+$_region = 'Unknown'
+foreach ($_api in ('https://dash.cloudflare.com/cdn-cgi/trace', 'https://www.cf-ns.com/cdn-cgi/trace', 'https://1.0.0.1/cdn-cgi/trace')) {
+    try {
+        $_req = [System.Net.WebRequest]::Create($_api)
+        $_req.Timeout = 1000
+        $_sr = New-Object System.IO.StreamReader($_req.GetResponse().GetResponseStream())
+        $_trace = $_sr.ReadToEnd()
+        $_sr.Close()
+        if ($_trace -match 'loc=(\w+)') { $_region = $Matches[1]; break }
+    } catch { $_region = 'CN' }
+}
+if ($_region -ne 'CN') {
+    Write-Host "Region: $_region (Not in CN), skipping GitHub Proxy." -ForegroundColor Yellow
+    $GitHubProxy = ''
+} else {
+    Write-Host "Region: CN, using GitHub Proxy: $GitHubProxy" -ForegroundColor Green
+}
 # Get Version
 $OsVersion = [System.Environment]::OSVersion.Version
 
@@ -320,12 +340,6 @@ if ($PSVersionTable.PSVersion.Major -lt 5) {
     Write-Error 'PowerShell 5 or later is required to run Scoop.'
 }
 
-# Avoid schannel issues on Windows causing connection failures
-if (Test-CommandAvailable git.exe) {
-    git config --global http.sslBackend openssl
-    git config --global http.sslverify false
-}
-
 # Determine if Scoop needs to be installed
 if (Test-CommandAvailable scoop) {
     if (Test-ScoopHealthy -ScoopRoot $SCOOP_DIR) {
@@ -385,12 +399,14 @@ while (-not (Test-CommandAvailable git.exe)) {
     reg.exe import "$SCOOP_DIR\apps\git\current\install-context.reg" *>$null
     reg.exe import "$SCOOP_DIR\apps\git\current\install-file-associations.reg" *>$null
     # set Git Credential Manager Core for portable Git
-    git config --system credential.helper manager
+    if (Test-Path "$SCOOP_DIR\apps\git\current\mingw64\bin\git-credential-manager.exe") {
+        git config --system credential.helper manager
+    }
 }
 
-# Avoid Windows connection issues due to schannel problems
+# Avoid schannel issues on Windows causing connection failures
 git config --global http.sslBackend openssl
-if ($OsVersion.Major -eq 6) { git config --global http.sslverify false }
+git config --global http.sslverify false
 
 # Execute update, automatically convert main bucket to git directory
 scoop update
@@ -448,11 +464,10 @@ scoop config desktop_shortcut true
 scoop config uninstall_shortcut true
 
 # Reset ACL to current user if UAC is enabled and running as administrator (important)
-if (($SCOOP_DIR -eq "$env:USERPROFILE\scoop") -and (Test-IsAdministrator) -and ($env:USERNAME -notin 'Administrator', 'SYSTEM')) {
+if ((Test-IsAdministrator) -and ($env:USERNAME -notin 'Administrator', 'SYSTEM')) {
     Write-Host "Resetting ACL to $env:USERNAME..." -ForegroundColor Cyan
     takeown /F "$SCOOP_DIR" /R /SKIPSL | Out-Null
-    # $userAcl = Get-Acl "$env:USERPROFILE\Appdata"
-    # Get-ChildItem -Path "$SCOOP_DIR" -Recurse -Force | Set-Acl -AclObject $userAcl
+    icacls "$SCOOP_DIR" /grant "${env:USERNAME}:(OI)(CI)F" /T /Q | Out-Null
 }
 
 # Refresh system environment

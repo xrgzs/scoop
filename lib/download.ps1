@@ -563,7 +563,12 @@ function setup_proxy() {
     # note: '@' and ':' in password must be escaped, e.g. 'p@ssword' -> p\@ssword'
     $proxy = get_config PROXY
     if (!$proxy) {
-        return
+        # 从环境变量读取代理
+        $proxy = $env:HTTP_PROXY
+        if (!$proxy) { $proxy = $env:HTTPS_PROXY }
+        if (!$proxy) { $proxy = $env:http_proxy }
+        if (!$proxy) { $proxy = $env:https_proxy }
+        if (!$proxy) { return }
     }
     try {
         $credentials, $address = $proxy -split '(?<!\\)@'
