@@ -144,6 +144,7 @@ function Sync-Bucket {
     $removedFiles = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
     if ($PSVersionTable.PSVersion.Major -ge 7) {
         # Parallel parameter is available since PowerShell 7
+        $null = Get-Region
         $buckets | Where-Object { $_.valid } | ForEach-Object -ThrottleLimit 5 -Parallel {
             . "$using:PSScriptRoot\core.ps1"
             . "$using:PSScriptRoot\buckets.ps1"
@@ -153,6 +154,13 @@ function Sync-Bucket {
             $innerBucketLoc = Find-BucketDirectory $name
 
             $previousCommit = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', 'HEAD')
+            $currentRepo = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'remote.origin.url')
+            if (-not (Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'http.proxy')) -or (Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'https.proxy'))) {
+                $_u = url_replace $currentRepo
+                if ($_u -ne $currentRepo) {
+                    Invoke-Git -Path $bucketLoc -ArgumentList @('remote', 'set-url', 'origin', $_u)
+                }
+            }
             Invoke-Git -Path $bucketLoc -ArgumentList @('pull', '-q')
             if ($using:Log) {
                 Invoke-GitLog -Path $bucketLoc -Name $name -CommitHash $previousCommit
@@ -184,6 +192,13 @@ function Sync-Bucket {
             $innerBucketLoc = Find-BucketDirectory $name
 
             $previousCommit = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', 'HEAD')
+            $currentRepo = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'remote.origin.url')
+            if (-not (Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'http.proxy')) -or (Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'https.proxy'))) {
+                $_u = url_replace $currentRepo
+                if ($_u -ne $currentRepo) {
+                    Invoke-Git -Path $bucketLoc -ArgumentList @('remote', 'set-url', 'origin', $_u)
+                }
+            }
             Invoke-Git -Path $bucketLoc -ArgumentList @('pull', '-q')
             if ($Log) {
                 Invoke-GitLog -Path $bucketLoc -Name $name -CommitHash $previousCommit
