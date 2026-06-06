@@ -92,8 +92,8 @@ function Test-ScoopHealthy {
     }
 
     try {
-        $versionOutput = & scoop --version 2>&1 | Out-String
-        if ($versionOutput -notmatch '\d+\.\d+') {
+        scoop --version *> $null
+        if ($LASTEXITCODE -ne 0) {
             return $false
         }
     } catch {
