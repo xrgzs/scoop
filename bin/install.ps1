@@ -1,6 +1,6 @@
 <#
 .DESCRIPTION
-    Xiaoran System Scoop Deployment Script v26.6.6.4
+    Xiaoran System Scoop Deployment Script v26.6.14.0
 .EXAMPLE
     # Default installation
     irm c.xrgzs.top/c/scoop | iex
@@ -68,6 +68,13 @@ function Test-IsAdministrator {
 function Update-Env {
     # Update PATH via registry
     $Env:Path = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path', 'User')
+}
+function Get-HubUrl {
+    param (
+        [Parameter(Mandatory = $True, Position = 0)]
+        [String] $Url
+    )
+    if ($GitHubProxy) { "$GitHubProxy/$Url" } else { $Url }
 }
 
 function Test-ScoopHealthy {
@@ -196,10 +203,10 @@ function Install-Scoop {
 
     # $ScoopInstallerScript = Invoke-RestMethod "$GitHubProxy/https://raw.githubusercontent.com/scoopinstaller/install/master/install.ps1" -UseBasicParsing
     $ScoopInstallerScript = Invoke-RestMethod http://c.xrgzs.top/c/scoop-installer.ps1
-	$ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_REPO = ').*?(?=')", "$GitHubProxy/https://github.com/xrgzs/scoop/archive/master.zip"
-    $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_REPO = ').*?(?=')", "$GitHubProxy/https://github.com/ScoopInstaller/Main/archive/master.zip"
+	$ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_REPO = ').*?(?=')", (Get-HubUrl 'https://github.com/xrgzs/scoop/archive/master.zip')
+    $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_REPO = ').*?(?=')", (Get-HubUrl 'https://github.com/ScoopInstaller/Main/archive/master.zip')
     $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_GIT_REPO = ').*?(?=')", 'https://gitcode.com/xrgzs/scoop.git'
-    $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_GIT_REPO = ').*?(?=')", "$GitHubProxy/https://github.com/ScoopInstaller/Main.git"
+    $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_GIT_REPO = ').*?(?=')", (Get-HubUrl 'https://github.com/ScoopInstaller/Main.git')
 
     $ScoopInstaller = Join-Path $env:TEMP "scoop_installer_$(Get-Random).ps1"
     $ScoopInstallerScript | Out-File $ScoopInstaller
@@ -426,15 +433,15 @@ if (!$Slim) {
     $BucketJobs += Add-ScoopBucketJob -Name 'java'
     $BucketJobs += Add-ScoopBucketJob -Name 'games'
 }
-$BucketJobs += Add-ScoopBucketJob -Name 'sdoog' -Uri "$GitHubProxy/https://github.com/xrgzs/sdoog"
+$BucketJobs += Add-ScoopBucketJob -Name 'sdoog' -Uri (Get-HubUrl 'https://github.com/xrgzs/sdoog')
 
 # Add curated repository sources
 if (!$Slim) {
-    $BucketJobs += Add-ScoopBucketJob -Name 'dorado' -Uri "$GitHubProxy/https://github.com/chawyehsu/dorado"
-    # $BucketJobs += Add-ScoopBucketJob -Name 'DoveBoy' -Uri "$GitHubProxy/https://github.com/DoveBoy/Apps"
-    # $BucketJobs += Add-ScoopBucketJob -Name 'aki' -Uri "$GitHubProxy/https://github.com/akirco/aki-apps"
-    # $BucketJobs += Add-ScoopBucketJob -Name 'abgo_bucket' -Uri "$GitHubProxy/https://github.com/abgox/abgo_bucket"
-    # $BucketJobs += Add-ScoopBucketJob -Name 'scoop-zapps' -Uri "$GitHubProxy/https://github.com/kkzzhizhou/scoop-zapps"
+    $BucketJobs += Add-ScoopBucketJob -Name 'dorado' -Uri (Get-HubUrl 'https://github.com/chawyehsu/dorado')
+    # $BucketJobs += Add-ScoopBucketJob -Name 'DoveBoy' -Uri (Get-HubUrl 'https://github.com/DoveBoy/Apps')
+    # $BucketJobs += Add-ScoopBucketJob -Name 'aki' -Uri (Get-HubUrl 'https://github.com/akirco/aki-apps')
+    # $BucketJobs += Add-ScoopBucketJob -Name 'abgo_bucket' -Uri (Get-HubUrl 'https://github.com/abgox/abgo_bucket')
+    # $BucketJobs += Add-ScoopBucketJob -Name 'scoop-zapps' -Uri (Get-HubUrl 'https://github.com/kkzzhizhou/scoop-zapps')
 }
 
 # Wait for bucket addition tasks to complete
