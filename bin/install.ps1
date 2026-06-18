@@ -1,6 +1,6 @@
 <#
 .DESCRIPTION
-    Xiaoran System Scoop Deployment Script v26.6.14.0
+    Xiaoran System Scoop Deployment Script v26.6.18.0
 .EXAMPLE
     # Default installation
     irm c.xrgzs.top/c/scoop | iex
@@ -84,7 +84,7 @@ function Test-ScoopHealthy {
     )
 
     if (-not (Test-CommandAvailable scoop)) {
-        return $false
+        return 'scoop command not found in PATH'
     }
 
     $RequiredPaths = @(
@@ -94,29 +94,35 @@ function Test-ScoopHealthy {
     )
     foreach ($Path in $RequiredPaths) {
         if (-not (Test-Path -Path $Path)) {
-            return $false
+            return "missing required file: $Path"
         }
     }
 
     try {
         scoop --version *> $null
         if ($LASTEXITCODE -ne 0) {
-            return $false
+            return "scoop --version failed with exit code $LASTEXITCODE"
         }
     } catch {
-        return $false
+        return "scoop --version threw exception: $($_.Exception.Message)"
     }
 
-    return $true
+    return $null
 }
 
 function Remove-BrokenScoop {
     param (
         [Parameter(Mandatory = $True)]
-        [String] $ScoopRoot
+        [String] $ScoopRoot,
+        [Parameter()]
+        [String] $Reason
     )
 
-    Write-Warning 'Detected Scoop installation but it looks broken. Cleaning and reinstalling...'
+    if ($Reason) {
+        Write-Warning "Detected Scoop installation but it looks broken ($Reason). Cleaning and reinstalling..."
+    } else {
+        Write-Warning 'Detected Scoop installation but it looks broken. Cleaning and reinstalling...'
+    }
     Remove-Item "$ScoopRoot\shims\scoop" -Force -ErrorAction SilentlyContinue | Out-Null
     Remove-Item "$ScoopRoot\shims\scoop.ps1" -Force -ErrorAction SilentlyContinue | Out-Null
     Remove-Item "$ScoopRoot\shims\scoop.cmd" -Force -ErrorAction SilentlyContinue | Out-Null
@@ -195,26 +201,47 @@ function Get-Aria2 {
 
 
 function Install-Scoop {
+    param (
+        [Int] $MaxRetries = 3
+    )
+
     # Tls12
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
 
-    # Install Scoop
-    Write-Host 'Installing Scoop...' -ForegroundColor Cyan
+    for ($Attempt = 1; $Attempt -le $MaxRetries; $Attempt++) {
+        # Install Scoop
+        Write-Host "Installing Scoop... (attempt $Attempt/$MaxRetries)" -ForegroundColor Cyan
 
-    # $ScoopInstallerScript = Invoke-RestMethod "$GitHubProxy/https://raw.githubusercontent.com/scoopinstaller/install/master/install.ps1" -UseBasicParsing
-    $ScoopInstallerScript = Invoke-RestMethod http://c.xrgzs.top/c/scoop-installer.ps1
-	$ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_REPO = ').*?(?=')", (Get-HubUrl 'https://github.com/xrgzs/scoop/archive/master.zip')
-    $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_REPO = ').*?(?=')", (Get-HubUrl 'https://github.com/ScoopInstaller/Main/archive/master.zip')
-    $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_GIT_REPO = ').*?(?=')", 'https://gitcode.com/xrgzs/scoop.git'
-    $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_GIT_REPO = ').*?(?=')", (Get-HubUrl 'https://github.com/ScoopInstaller/Main.git')
+        # $ScoopInstallerScript = Invoke-RestMethod "$GitHubProxy/https://raw.githubusercontent.com/scoopinstaller/install/master/install.ps1" -UseBasicParsing
+        $ScoopInstallerScript = Invoke-RestMethod http://c.xrgzs.top/c/scoop-installer.ps1
+        $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_REPO = ').*?(?=')", (Get-HubUrl 'https://github.com/xrgzs/scoop/archive/master.zip')
+        $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_REPO = ').*?(?=')", (Get-HubUrl 'https://github.com/ScoopInstaller/Main/archive/master.zip')
+        $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_GIT_REPO = ').*?(?=')", 'https://gitcode.com/xrgzs/scoop.git'
+        $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_GIT_REPO = ').*?(?=')", (Get-HubUrl 'https://github.com/ScoopInstaller/Main.git')
 
-    $ScoopInstaller = Join-Path $env:TEMP "scoop_installer_$(Get-Random).ps1"
-    $ScoopInstallerScript | Out-File $ScoopInstaller
-    . $ScoopInstaller -RunAsAdmin -ScoopDir $SCOOP_DIR -ScoopGlobalDir $SCOOP_GLOBAL_DIR -ScoopCacheDir $SCOOP_CACHE_DIR
-    Remove-Item $ScoopInstaller -Force
+        $ScoopInstaller = Join-Path $env:TEMP "scoop_installer_$(Get-Random).ps1"
+        $ScoopInstallerScript | Out-File $ScoopInstaller
+        . $ScoopInstaller -RunAsAdmin -ScoopDir $SCOOP_DIR -ScoopGlobalDir $SCOOP_GLOBAL_DIR -ScoopCacheDir $SCOOP_CACHE_DIR
+        Remove-Item $ScoopInstaller -Force
 
-    # Refresh system environment, no need to refresh again if scoop\shims exists
-    Update-Env
+        # Refresh system environment, no need to refresh again if scoop\shims exists
+        Update-Env
+
+        # Check if installation succeeded
+        $HealthReason = Test-ScoopHealthy -ScoopRoot $SCOOP_DIR
+        if (-not $HealthReason) {
+            return
+        }
+
+        # Backoff before retry (exponential: 5s, 15s, 45s)
+        if ($Attempt -lt $MaxRetries) {
+            $WaitSeconds = [Math]::Pow(3, $Attempt) * 5
+            Write-Warning "Installation attempt $Attempt failed ($HealthReason). Retrying in $WaitSeconds seconds..."
+            Start-Sleep -Seconds $WaitSeconds
+        }
+    }
+
+    Write-Error "Scoop installation failed after $MaxRetries attempts. Last reason: $HealthReason"
 }
 
 # ========================================================================
@@ -349,21 +376,18 @@ if ($PSVersionTable.PSVersion.Major -lt 5) {
 
 # Determine if Scoop needs to be installed
 if (Test-CommandAvailable scoop) {
-    if (Test-ScoopHealthy -ScoopRoot $SCOOP_DIR) {
+    $ScoopHealthReason = Test-ScoopHealthy -ScoopRoot $SCOOP_DIR
+    if (-not $ScoopHealthReason) {
         Write-Host 'Scoop has already been installed.' -ForegroundColor Green
         Remove-Item "$SCOOP_DIR\apps\scoop\current\.git" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
         Remove-Item "$SCOOP_DIR\apps\scoop\new" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
         Remove-Item "$SCOOP_DIR\apps\scoop\old" -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
     } else {
-        Remove-BrokenScoop -ScoopRoot $SCOOP_DIR
-        while (-not (Test-ScoopHealthy -ScoopRoot $SCOOP_DIR)) {
-            Install-Scoop
-        }
-    }
-} else {
-    while (-not (Test-ScoopHealthy -ScoopRoot $SCOOP_DIR)) {
+        Remove-BrokenScoop -ScoopRoot $SCOOP_DIR -Reason $ScoopHealthReason
         Install-Scoop
     }
+} else {
+    Install-Scoop
 }
 
 $ErrorActionPreference = 'Continue'
