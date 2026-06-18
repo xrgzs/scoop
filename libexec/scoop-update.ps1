@@ -81,7 +81,12 @@ function Sync-Scoop {
         $olddir = "$currentdir\..\old"
 
         # get git scoop
-        Invoke-Git -ArgumentList @('clone', '-q', $configRepo, '--branch', $configBranch, '--single-branch', $newdir)
+        try {
+            Invoke-Git -ArgumentList @('clone', '-q', $configRepo, '--branch', $configBranch, '--single-branch', $newdir) -Timeout 100
+        } catch {
+            Remove-Item $newdir -Force -Recurse -ErrorAction SilentlyContinue
+            abort "Scoop clone timed out after 100s. Please check your network connection and try again."
+        }
 
         # check if scoop was successful downloaded
         if (!(Test-Path "$newdir\bin\scoop.ps1")) {

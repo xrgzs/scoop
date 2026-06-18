@@ -225,7 +225,11 @@ function Invoke-Git {
         [Parameter(Mandatory = $true, Position = 1)]
         [Alias('Args')]
         [String[]]
-        $ArgumentList
+        $ArgumentList,
+        [Parameter(Mandatory = $false)]
+        [ValidateRange(0, [int]::MaxValue)]
+        [int]
+        $Timeout = 0
     )
 
     $proxy = get_config PROXY
@@ -235,22 +239,42 @@ function Invoke-Git {
         $ArgumentList = @('-C', $WorkingDirectory) + $ArgumentList
     }
 
-    if ([String]::IsNullOrEmpty($proxy) -or $proxy -eq 'none') {
-        return & $git @ArgumentList
-    }
+    $isNetworkOp = $ArgumentList -match '\b(clone|checkout|pull|fetch|ls-remote)\b'
+    $hasProxy = -not ([String]::IsNullOrEmpty($proxy) -or $proxy -eq 'none')
 
-    if ($ArgumentList -match '\b(clone|checkout|pull|fetch|ls-remote)\b') {
+    # Use job-based execution for network operations with proxy or timeout
+    if ($isNetworkOp -and ($hasProxy -or $Timeout -gt 0)) {
+        $exitCodeFile = [System.IO.Path]::GetTempFileName()
         $j = Start-Job -ScriptBlock {
+            param($git, $ArgumentList, $proxy, $exitCodeFile)
             # convert proxy setting for git
-            $proxy = $using:proxy
             if ($proxy -and $proxy.StartsWith('currentuser@')) {
                 $proxy = $proxy.Replace('currentuser@', ':@')
             }
-            $env:HTTPS_PROXY = $proxy
-            $env:HTTP_PROXY = $proxy
-            & $using:git @using:ArgumentList
+            if ($proxy -and $proxy -ne 'none') {
+                $env:HTTPS_PROXY = $proxy
+                $env:HTTP_PROXY = $proxy
+            }
+            & $git @ArgumentList
+            # Save exit code to file since jobs don't propagate $LASTEXITCODE
+            Set-Content -Path $exitCodeFile -Value $LASTEXITCODE
+        } -ArgumentList $git, $ArgumentList, $proxy, $exitCodeFile
+
+        if ($Timeout -gt 0) {
+            $completed = $j | Wait-Job -Timeout $Timeout
+            if (-not $completed) {
+                $j | Stop-Job -PassThru | Remove-Job -Force
+                Remove-Item $exitCodeFile -Force -ErrorAction SilentlyContinue
+                throw "Git operation timed out after ${Timeout}s: $($ArgumentList -join ' ')"
+            }
         }
+
         $o = $j | Receive-Job -Wait -AutoRemoveJob
+        # Read exit code from temp file
+        if (Test-Path $exitCodeFile) {
+            $global:LASTEXITCODE = [int](Get-Content $exitCodeFile)
+            Remove-Item $exitCodeFile -Force -ErrorAction SilentlyContinue
+        }
         return $o
     }
 
