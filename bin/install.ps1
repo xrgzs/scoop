@@ -1,6 +1,6 @@
 <#
 .DESCRIPTION
-    Xiaoran System Scoop Deployment Script v26.6.18.0
+    Xiaoran System Scoop Deployment Script v26.6.20.0
 .EXAMPLE
     # Default installation
     irm c.xrgzs.top/c/scoop | iex
@@ -455,7 +455,7 @@ if (!$Slim) {
     $BucketJobs += Add-ScoopBucketJob -Name 'nerd-fonts'
     $BucketJobs += Add-ScoopBucketJob -Name 'nonportable'
     $BucketJobs += Add-ScoopBucketJob -Name 'java'
-    $BucketJobs += Add-ScoopBucketJob -Name 'games'
+    # $BucketJobs += Add-ScoopBucketJob -Name 'games'
 }
 $BucketJobs += Add-ScoopBucketJob -Name 'sdoog' -Uri (Get-HubUrl 'https://github.com/xrgzs/sdoog')
 
