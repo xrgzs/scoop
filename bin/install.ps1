@@ -1,6 +1,6 @@
 <#
 .DESCRIPTION
-    Xiaoran System Scoop Deployment Script v26.6.20.0
+    Xiaoran System Scoop Deployment Script v26.8.7.0
 .EXAMPLE
     # Default installation
     irm c.xrgzs.top/c/scoop | iex
@@ -200,6 +200,121 @@ function Get-Aria2 {
 }
 
 
+function Add-GitBashProfileToWindowsTerminal {
+    <#
+    .SYNOPSIS
+        Adds a Git Bash profile to Windows Terminal settings.json (if readable).
+    .DESCRIPTION
+        - Auto-detects Windows Terminal (Stable / Preview / Canary / unpackaged).
+        - Creates settings.json if Windows Terminal is installed but the file does not exist.
+        - If settings.json exists but cannot be parsed, skips WITHOUT modifying it.
+        - Never throws: failures are caught and reported as warnings.
+        - Compatible with Windows PowerShell 5 and PowerShell 7.
+    #>
+    param (
+        [Parameter(Mandatory = $False)]
+        [String] $GitBashExe = "$SCOOP_DIR\apps\git\current\bin\bash.exe"
+    )
+
+    # Git Bash must exist, otherwise skip
+    if (-not (Test-Path -LiteralPath $GitBashExe)) {
+        Write-Host "Git Bash not found at $GitBashExe, skip Windows Terminal profile configuration." -ForegroundColor DarkGray
+        return
+    }
+
+    # Candidate settings.json paths (in priority order)
+    $SettingsCandidates = @(
+        @{ 'Path' = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"; 'Dir' = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe" },
+        @{ 'Path' = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json"; 'Dir' = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe" },
+        @{ 'Path' = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminalCanary_8wekyb3d8bbwe\LocalState\settings.json"; 'Dir' = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminalCanary_8wekyb3d8bbwe" },
+        @{ 'Path' = "$env:LOCALAPPDATA\Microsoft\Windows Terminal\settings.json"; 'Dir' = "$env:LOCALAPPDATA\Microsoft\Windows Terminal" }
+    )
+
+    $SettingsJson = $null
+    foreach ($Candidate in $SettingsCandidates) {
+        if (Test-Path -LiteralPath $Candidate.Path) {
+            $SettingsJson = $Candidate.Path
+            break
+        }
+    }
+    if (-not $SettingsJson) {
+        # Windows Terminal installed but settings.json missing -> will create it
+        foreach ($Candidate in $SettingsCandidates) {
+            if (Test-Path -LiteralPath $Candidate.Dir) {
+                $SettingsJson = $Candidate.Path
+                break
+            }
+        }
+    }
+    if (-not $SettingsJson) {
+        Write-Host 'Windows Terminal not detected, skip Git Bash profile configuration.' -ForegroundColor DarkGray
+        return
+    }
+
+    try {
+        # Load settings; if it cannot be read, skip WITHOUT modifying it
+        $Settings = $null
+        if (Test-Path -LiteralPath $SettingsJson) {
+            try {
+                $Settings = Get-Content -LiteralPath $SettingsJson -Raw -Encoding UTF8 | ConvertFrom-Json
+            } catch {
+                Write-Warning "Windows Terminal settings.json could not be parsed, Git Bash profile was NOT added automatically: $SettingsJson"
+                Write-Warning "Reason: $($_.Exception.Message)"
+                return
+            }
+        } else {
+            $SettingsDir = Split-Path -Path $SettingsJson -Parent
+            if (-not (Test-Path -LiteralPath $SettingsDir)) {
+                New-Item -Path $SettingsDir -ItemType Directory -Force | Out-Null
+            }
+            $Settings = [PSCustomObject]@{
+                '$schema'  = 'https://aka.ms/terminal-profiles-schema'
+                'profiles' = [PSCustomObject]@{
+                    'defaults' = [PSCustomObject]@{}
+                    'list'     = @()
+                }
+            }
+        }
+
+        # Ensure profiles and profiles.list exist
+        if ($null -eq $Settings.profiles) {
+            $Settings | Add-Member -NotePropertyName 'profiles' -NotePropertyValue ([PSCustomObject]@{ 'defaults' = [PSCustomObject]@{}; 'list' = @() }) -Force
+        }
+        if ($null -eq $Settings.profiles.list) {
+            $Settings.profiles | Add-Member -NotePropertyName 'list' -NotePropertyValue @() -Force
+        }
+
+        # Skip if a Git Bash profile already exists (matched by bash.exe path, case-insensitive)
+        foreach ($Profile in $Settings.profiles.list) {
+            if ($null -ne $Profile -and $null -ne $Profile.commandline -and ($Profile.commandline.IndexOf($GitBashExe, [System.StringComparison]::OrdinalIgnoreCase) -ge 0)) {
+                Write-Host 'Git Bash profile already exists in Windows Terminal settings, nothing to do.' -ForegroundColor DarkGray
+                return
+            }
+        }
+
+        # Build the new Git Bash profile
+        $NewProfile = [ordered]@{
+            'guid'              = '{a5a97cb8-8981-4b5d-a6f0-2a8e6f9c3d41}'
+            'name'              = 'Git Bash'
+            'commandline'       = "`"$GitBashExe`" -li"
+            'startingDirectory' = '%USERPROFILE%'
+        }
+        $GitIcon = Join-Path (Split-Path -Path (Split-Path -Path $GitBashExe -Parent) -Parent) 'mingw64\share\git\git-for-windows.ico'
+        if (Test-Path -LiteralPath $GitIcon) {
+            $NewProfile['icon'] = $GitIcon
+        }
+        $Settings.profiles.list += [PSCustomObject]$NewProfile
+
+        # Write back (UTF-8 without BOM, PowerShell 5 compatible)
+        $Utf8NoBom = New-Object System.Text.UTF8Encoding($False)
+        [System.IO.File]::WriteAllText($SettingsJson, ($Settings | ConvertTo-Json -Depth 20), $Utf8NoBom)
+        Write-Host "Git Bash profile added to Windows Terminal: $SettingsJson" -ForegroundColor Green
+    } catch {
+        Write-Warning "Failed to configure Windows Terminal Git Bash profile: $($_.Exception.Message)"
+    }
+}
+
+
 function Install-Scoop {
     param (
         [Int] $MaxRetries = 3
@@ -212,18 +327,21 @@ function Install-Scoop {
         # Install Scoop
         Write-Host "Installing Scoop... (attempt $Attempt/$MaxRetries)" -ForegroundColor Cyan
 
-        # $ScoopInstallerScript = Invoke-RestMethod "$GitHubProxy/https://raw.githubusercontent.com/scoopinstaller/install/master/install.ps1" -UseBasicParsing
-        $ScoopInstallerScript = Invoke-RestMethod http://c.xrgzs.top/c/scoop-installer.ps1
-        $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_REPO = ').*?(?=')", (Get-HubUrl 'https://github.com/xrgzs/scoop/archive/master.zip')
-        $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_REPO = ').*?(?=')", (Get-HubUrl 'https://github.com/ScoopInstaller/Main/archive/master.zip')
-        $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_GIT_REPO = ').*?(?=')", 'https://gitcode.com/xrgzs/scoop.git'
-        $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_GIT_REPO = ').*?(?=')", (Get-HubUrl 'https://github.com/ScoopInstaller/Main.git')
+        try {
+            # $ScoopInstallerScript = Invoke-RestMethod "$GitHubProxy/https://raw.githubusercontent.com/scoopinstaller/install/master/install.ps1" -UseBasicParsing
+            $ScoopInstallerScript = Invoke-RestMethod https://c.xrgzs.top/c/scoop-installer.ps1
+            $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_REPO = ').*?(?=')", (Get-HubUrl 'https://github.com/xrgzs/scoop/archive/master.zip')
+            $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_REPO = ').*?(?=')", (Get-HubUrl 'https://github.com/ScoopInstaller/Main/archive/master.zip')
+            $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_PACKAGE_GIT_REPO = ').*?(?=')", 'https://gitcode.com/xrgzs/scoop.git'
+            $ScoopInstallerScript = $ScoopInstallerScript -replace "(?<=\`$SCOOP_MAIN_BUCKET_GIT_REPO = ').*?(?=')", (Get-HubUrl 'https://github.com/ScoopInstaller/Main.git')
 
-        $ScoopInstaller = Join-Path $env:TEMP "scoop_installer_$(Get-Random).ps1"
-        $ScoopInstallerScript | Out-File $ScoopInstaller
-        . $ScoopInstaller -RunAsAdmin -ScoopDir $SCOOP_DIR -ScoopGlobalDir $SCOOP_GLOBAL_DIR -ScoopCacheDir $SCOOP_CACHE_DIR
-        Remove-Item $ScoopInstaller -Force
-
+            $ScoopInstaller = Join-Path $env:TEMP "scoop_installer_$(Get-Random).ps1"
+            $ScoopInstallerScript | Out-File $ScoopInstaller
+            . $ScoopInstaller -RunAsAdmin -ScoopDir $SCOOP_DIR -ScoopGlobalDir $SCOOP_GLOBAL_DIR -ScoopCacheDir $SCOOP_CACHE_DIR
+            Remove-Item $ScoopInstaller -Force
+        } catch {
+            continue
+        }
         # Refresh system environment, no need to refresh again if scoop\shims exists
         Update-Env
 
@@ -433,6 +551,9 @@ while (-not (Test-CommandAvailable git.exe)) {
     if (Test-Path "$SCOOP_DIR\apps\git\current\mingw64\bin\git-credential-manager.exe") {
         git config --system credential.helper manager
     }
+
+    # Add Git Bash profile to Windows Terminal
+    Add-GitBashProfileToWindowsTerminal
 }
 
 # Avoid schannel issues on Windows causing connection failures
