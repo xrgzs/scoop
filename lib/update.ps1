@@ -160,7 +160,9 @@ function Sync-Bucket {
 
             $previousCommit = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', 'HEAD')
             $currentRepo = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'remote.origin.url')
-            if (-not (Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'http.proxy')) -or (Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'https.proxy'))) {
+            $httpProxy = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'http.proxy')
+            $httpsProxy = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'https.proxy')
+            if (-not $httpProxy -and -not $httpsProxy) {
                 $_u = url_replace $currentRepo
                 if ($_u -ne $currentRepo) {
                     Invoke-Git -Path $bucketLoc -ArgumentList @('remote', 'set-url', 'origin', $_u)
@@ -198,7 +200,9 @@ function Sync-Bucket {
 
             $previousCommit = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', 'HEAD')
             $currentRepo = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'remote.origin.url')
-            if (-not (Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'http.proxy')) -or (Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'https.proxy'))) {
+            $httpProxy = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'http.proxy')
+            $httpsProxy = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'https.proxy')
+            if (-not $httpProxy -and -not $httpsProxy) {
                 $_u = url_replace $currentRepo
                 if ($_u -ne $currentRepo) {
                     Invoke-Git -Path $bucketLoc -ArgumentList @('remote', 'set-url', 'origin', $_u)
