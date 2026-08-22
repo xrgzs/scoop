@@ -53,6 +53,11 @@ function url_replace($url) {
     if ((get_config URL_REPLACE) -eq $False) {
         return $url
     }
+    # 剥离已存在的任意 ghproxy 前缀，确保更换 GH_PROXY 后能自动切换到新镜像
+    if ($url -match '^https://[^/]+/https://(github\.com|raw\.githubusercontent\.com|downloads\.sourceforge\.net|sourceforge\.net)') {
+        $url = $url -replace '^https://[^/]+/https://', 'https://'
+        info "[UrlReplace] Stripped existing ghproxy prefix: $url"
+    }
     # 获取客户端ip属地
     # $ip = ''
     info '[UrlReplace] Detecting IP region...'
@@ -82,10 +87,10 @@ function url_replace($url) {
     # 定义替换规则的映射表
     $replacementMap = @{
         # Gitee → GitHub (已停止支持免密克隆)
-        'https://gitee\.com/scoop-installer/scoop-sysinternals'                 = 'https://github.com/niheaven/scoop-sysinternals'
-        'https://gitee\.com/scoop-installer/scoop-nerd-fonts'                   = 'https://github.com/matthewjberger/scoop-nerd-fonts'
-        'https://gitee\.com/scoop-installer/scoop-games'                        = 'https://github.com/Calinou/scoop-games'
-        'https://gitee\.com/scoop-installer/'                                   = 'https://github.com/ScoopInstaller/'
+        'https://gitee\.com/scoop-installer/scoop-sysinternals'                = 'https://github.com/niheaven/scoop-sysinternals'
+        'https://gitee\.com/scoop-installer/scoop-nerd-fonts'                  = 'https://github.com/matthewjberger/scoop-nerd-fonts'
+        'https://gitee\.com/scoop-installer/scoop-games'                       = 'https://github.com/Calinou/scoop-games'
+        'https://gitee\.com/scoop-installer/'                                  = 'https://github.com/ScoopInstaller/'
 
         # XRWEBDL
         'list\.xrgzs\.top/d/pxy'                                               = 'dl.xrgzs.top/d/pxy'
