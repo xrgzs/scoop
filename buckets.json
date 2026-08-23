@@ -1,5 +1,7 @@
 {
     "main": "https://github.com/ScoopInstaller/Main",
+    "sdoog": "https://github.com/xrgzs/sdoog",
+    "dorado": "https://github.com/chawyehsu/dorado",
     "extras": "https://github.com/ScoopInstaller/Extras",
     "versions": "https://github.com/ScoopInstaller/Versions",
     "nirsoft": "https://github.com/ScoopInstaller/Nirsoft",
@@ -8,5 +10,7 @@
     "nerd-fonts": "https://github.com/matthewjberger/scoop-nerd-fonts",
     "nonportable": "https://github.com/ScoopInstaller/Nonportable",
     "java": "https://github.com/ScoopInstaller/Java",
-    "games": "https://github.com/Calinou/scoop-games"
+    "games": "https://github.com/Calinou/scoop-games",
+    "ar": "https://github.com/arch3rPro/PST-Bucket",
+    "lemon": "https://github.com/hoilc/scoop-lemon"
 }

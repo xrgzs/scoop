@@ -22,6 +22,13 @@ if (!(Get-FormatData ScoopStatus)) {
 
 function Test-UpdateStatus($repopath) {
     if (Test-Path "$repopath\.git") {
+        $_u = Invoke-Git -Path $repopath -ArgumentList @('config', 'remote.origin.url')
+        if (-not (Invoke-Git -Path $repopath -ArgumentList @('config', 'http.proxy')) -or (Invoke-Git -Path $repopath -ArgumentList @('config', 'https.proxy'))) {
+            $_f = url_replace $_u
+            if ($_f -ne $_u) {
+                Invoke-Git -Path $repopath -ArgumentList @('remote', 'set-url', 'origin', $_f)
+            }
+        }
         Invoke-Git -Path $repopath -ArgumentList @('fetch', '-q', 'origin')
         $script:network_failure = 128 -eq $LASTEXITCODE
         $branch  = Invoke-Git -Path $repopath -ArgumentList @('branch', '--show-current')

@@ -41,8 +41,8 @@ $all = $opt.a -or $opt.all
 
 # load config
 $configRepo = get_config SCOOP_REPO
-if (!$configRepo) {
-    $configRepo = 'https://github.com/ScoopInstaller/Scoop'
+if (!$configRepo -or ($configRepo -match 'https?://gitee.com/xrgzs/scoop')) {
+    $configRepo = 'https://gitcode.com/xrgzs/scoop'
     set_config SCOOP_REPO $configRepo | Out-Null
 }
 
@@ -63,7 +63,7 @@ $show_update_log = get_config SHOW_UPDATE_LOG $true
 
 function Sync-Scoop {
     [CmdletBinding()]
-    Param (
+    param (
         [Switch]$Log
     )
     # Test if Scoop Core is hold
@@ -76,12 +76,17 @@ function Sync-Scoop {
 
     Write-Host 'Updating Scoop...'
     $currentdir = versiondir 'scoop' 'current'
-    if (!(Test-Path "$currentdir\.git")) {
+        if (!(Test-Path "$currentdir\.git")) {
         $newdir = "$currentdir\..\new"
         $olddir = "$currentdir\..\old"
 
         # get git scoop
-        Invoke-Git -ArgumentList @('clone', '-q', $configRepo, '--branch', $configBranch, '--single-branch', $newdir)
+        try {
+            Invoke-Git -ArgumentList @('clone', '-q', $configRepo, '--branch', $configBranch, '--single-branch', $newdir) -Timeout 100
+        } catch {
+            Remove-Item $newdir -Force -Recurse -ErrorAction SilentlyContinue
+            abort "Scoop clone timed out after 100s. Please check your network connection and try again."
+        }
 
         # check if scoop was successful downloaded
         if (!(Test-Path "$newdir\bin\scoop.ps1")) {
@@ -104,7 +109,7 @@ function Sync-Scoop {
 
         $previousCommit = Invoke-Git -Path $currentdir -ArgumentList @('rev-parse', 'HEAD')
         $currentRepo = Invoke-Git -Path $currentdir -ArgumentList @('config', 'remote.origin.url')
-        $currentBranch = Invoke-Git -Path $currentdir -ArgumentList @('branch')
+        $currentBranch = Invoke-Git -Path $currentdir -ArgumentList @('rev-parse', '--abbrev-ref', 'HEAD')
 
         $isRepoChanged = !($currentRepo -match $configRepo)
         $isBranchChanged = !($currentBranch -match "\*\s+$configBranch")
@@ -136,7 +141,9 @@ function Sync-Scoop {
             # reset branch HEAD
             Invoke-Git -Path $currentdir -ArgumentList @('reset', '--hard', "origin/$configBranch", '-q')
         } else {
-            Invoke-Git -Path $currentdir -ArgumentList @('pull', '--tags', '--force', '-q')
+            # Invoke-Git -Path $currentdir -ArgumentList @('pull', '--tags', '--force', '-q')
+            Invoke-Git -Path $currentdir -ArgumentList @('fetch', 'origin', $currentBranch, '-q')
+            Invoke-Git -Path $currentdir -ArgumentList @('reset', '--hard', "origin/$currentBranch", '-q')
         }
 
         $res = $lastexitcode
@@ -153,7 +160,7 @@ function Sync-Scoop {
 }
 
 function Sync-Bucket {
-    Param (
+    param (
         [Switch]$Log
     )
     Write-Host 'Updating Buckets...'
@@ -170,6 +177,11 @@ function Sync-Bucket {
         }
     }
 
+    # if (Get-Command 'hok' -ErrorAction Ignore) {
+    #     info '[hok] Using git2-rs...'
+    #     hok update
+    #     return
+    # }
 
     $buckets = Get-LocalBucket | ForEach-Object {
         $path = Find-BucketDirectory $_ -Root
@@ -186,6 +198,9 @@ function Sync-Bucket {
     $removedFiles = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
     if ($PSVersionTable.PSVersion.Major -ge 7) {
         # Parallel parameter is available since PowerShell 7
+
+        # make cache for Get-Region
+        $null = Get-Region
         $buckets | Where-Object { $_.valid } | ForEach-Object -ThrottleLimit 5 -Parallel {
             . "$using:PSScriptRoot\..\lib\core.ps1"
             . "$using:PSScriptRoot\..\lib\buckets.ps1"
@@ -195,7 +210,19 @@ function Sync-Bucket {
             $innerBucketLoc = Find-BucketDirectory $name
 
             $previousCommit = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', 'HEAD')
-            Invoke-Git -Path $bucketLoc -ArgumentList @('pull', '-q')
+            $currentRepo = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'remote.origin.url')
+            $httpProxy = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'http.proxy')
+            $httpsProxy = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'https.proxy')
+            if (-not $httpProxy -and -not $httpsProxy) {
+                $_u = url_replace $currentRepo
+                if ($_u -ne $currentRepo) {
+                    Invoke-Git -Path $bucketLoc -ArgumentList @('remote', 'set-url', 'origin', $_u)
+                }
+            }
+            $currentBranch = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', '--abbrev-ref', 'HEAD')
+            Invoke-Git -Path $bucketLoc -ArgumentList @('fetch', 'origin', $currentBranch, '-q')
+            Invoke-Git -Path $bucketLoc -ArgumentList @('reset', '--hard', "origin/$currentBranch", '-q')
+            # Invoke-Git -Path $bucketLoc -ArgumentList @('pull', '-q')
             if ($using:Log) {
                 Invoke-GitLog -Path $bucketLoc -Name $name -CommitHash $previousCommit
             }
@@ -226,7 +253,19 @@ function Sync-Bucket {
             $innerBucketLoc = Find-BucketDirectory $name
 
             $previousCommit = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', 'HEAD')
-            Invoke-Git -Path $bucketLoc -ArgumentList @('pull', '-q')
+            $currentRepo = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'remote.origin.url')
+            $httpProxy = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'http.proxy')
+            $httpsProxy = Invoke-Git -Path $bucketLoc -ArgumentList @('config', 'https.proxy')
+            if (-not $httpProxy -and -not $httpsProxy) {
+                $_u = url_replace $currentRepo
+                if ($_u -ne $currentRepo) {
+                    Invoke-Git -Path $bucketLoc -ArgumentList @('remote', 'set-url', 'origin', $_u)
+                }
+            }
+            $currentBranch = Invoke-Git -Path $bucketLoc -ArgumentList @('rev-parse', '--abbrev-ref', 'HEAD')
+            Invoke-Git -Path $bucketLoc -ArgumentList @('fetch', 'origin', $currentBranch, '-q')
+            Invoke-Git -Path $bucketLoc -ArgumentList @('reset', '--hard', "origin/$currentBranch", '-q')
+            # Invoke-Git -Path $bucketLoc -ArgumentList @('pull', '-q')
             if ($Log) {
                 Invoke-GitLog -Path $bucketLoc -Name $name -CommitHash $previousCommit
             }
@@ -357,7 +396,7 @@ function update($app, $global, $quiet = $false, $independent, $suggested, $use_c
             Move-Item "$dir" "$dir/../_$version.old"
         } else {
             $i = 1
-            While (Test-Path "$dir/../_$version.old($i)") {
+            while (Test-Path "$dir/../_$version.old($i)") {
                 $i++
             }
             Move-Item "$dir" "$dir/../_$version.old($i)"

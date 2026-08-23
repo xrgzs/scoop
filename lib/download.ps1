@@ -2,6 +2,8 @@
 
 ## Meta downloader
 
+. "$PSScriptRoot\mirror.ps1"
+
 function Invoke-ScoopDownload ($app, $version, $manifest, $bucket, $architecture, $dir, $use_cache = $true, $check_hash = $true) {
     # we only want to show this warning once
     if (!$use_cache) { warn 'Cache is being ignored.' }
@@ -88,7 +90,7 @@ function Start-Download ($url, $to, $cookies) {
 
 function Invoke-Download ($url, $to, $cookies, $progress) {
     # download with filesize and progress indicator
-    $reqUrl = ($url -split '#')[0]
+    $reqUrl = url_replace(($url -split '#')[0])
     $wreq = [Net.WebRequest]::Create($reqUrl)
     if ($wreq -is [Net.HttpWebRequest]) {
         $wreq.UserAgent = Get-UserAgent
@@ -402,7 +404,7 @@ function Invoke-CachedAria2Download ($app, $version, $manifest, $architecture, $
                     warn 'Token might be misconfigured.'
                 }
             }
-            $urlstxt_content += "$try_url`n"
+            $urlstxt_content += "$(url_replace $try_url)`n"
             if (!$url.Contains('sourceforge.net')) {
                 $urlstxt_content += "    referer=$(strip_filename $url)`n"
             }
@@ -509,6 +511,9 @@ function Invoke-CachedAria2Download ($app, $version, $manifest, $architecture, $
                 if ($url.Contains('sourceforge.net')) {
                     Write-Host -f yellow 'SourceForge.net is known for causing hash validation fails. Please try again before opening a ticket.'
                 }
+                if (get_config URL_REPLACE -ne $False) {
+                    Write-Host -f yellow '[UrlReplace] is known for causing hash validation fails. Please try again before opening a ticket. You can disable this module by "scoop config url_replace false".'
+                }
                 abort $(new_issue_msg $app $bucket 'hash check failed')
             }
         }
@@ -558,28 +563,82 @@ function setup_proxy() {
     # note: '@' and ':' in password must be escaped, e.g. 'p@ssword' -> p\@ssword'
     $proxy = get_config PROXY
     if (!$proxy) {
-        return
+        # 从环境变量读取代理
+        $proxy = $env:HTTP_PROXY
+        if (!$proxy) { $proxy = $env:HTTPS_PROXY }
+        if (!$proxy) { $proxy = $env:ALL_PROXY }
+        if (!$proxy) { $proxy = $env:http_proxy }
+        if (!$proxy) { $proxy = $env:https_proxy }
+        if (!$proxy) { $proxy = $env:all_proxy }
+        if (!$proxy) { return }
     }
+
+    Remove-Item Env:SCOOP_REGION -ErrorAction SilentlyContinue
+
     try {
+        # Extract scheme prefix if present (e.g. 'http://' commonly found in
+        # HTTP_PROXY/HTTPS_PROXY environment variables). Supported schemes are
+        # http, https and socks4/4a/5/5h; anything else falls back to http.
+        $scheme = 'http'
+        if ($proxy -match '^(?i)(https?|socks[45]h?a?)://') {
+            $scheme = $Matches[1].ToLower()
+            $proxy = $proxy.Substring($Matches[0].Length)
+        }
+
+        # SOCKS proxies (any variant) require HttpClient (.NET 5+), available
+        # since PowerShell 7 only; WebRequest in Windows PowerShell 5.1
+        # (.NET Framework) does not support SOCKS at all
+        if ($PSVersionTable.PSVersion.Major -lt 7 -and $scheme -like 'socks*') {
+            warn 'SOCKS proxy is not supported in Windows PowerShell 5.1 or earlier. Please use PowerShell 7+.'
+            return
+        }
+
         $credentials, $address = $proxy -split '(?<!\\)@'
         if (!$address) {
             $address, $credentials = $credentials, $null # no credentials supplied
         }
 
+        # Disable proxy
         if ($address -eq 'none') {
-            [net.webrequest]::defaultwebproxy = $null
-        } elseif ($address -ne 'default') {
-            [net.webrequest]::defaultwebproxy = New-Object net.webproxy "http://$address"
+            [Net.WebRequest]::DefaultWebProxy = $null
+
+            if ($PSVersionTable.PSVersion.Major -ge 7) {
+                [Net.Http.HttpClient]::DefaultProxy = [Net.GlobalProxySelection]::GetEmptyWebProxy()
+            }
+            return
         }
 
+        # Use system/default proxy
+        if ($address -eq 'default') {
+            [Net.WebRequest]::DefaultWebProxy = [Net.GlobalProxySelection]::Select
+
+            if ($PSVersionTable.PSVersion.Major -ge 7) {
+                [Net.Http.HttpClient]::DefaultProxy = [Net.GlobalProxySelection]::Select
+            }
+            return
+        }
+
+        # Create proxy object, keep the original scheme (http/https/socks5)
+        $proxyObject = New-Object Net.WebProxy "$scheme`://$address"
+
+        # Configure credentials
         if ($credentials -eq 'currentuser') {
-            [net.webrequest]::defaultwebproxy.credentials = [net.credentialcache]::defaultcredentials
+            $proxyObject.Credentials = [Net.CredentialCache]::DefaultCredentials
         } elseif ($credentials) {
             $username, $password = $credentials -split '(?<!\\):' | ForEach-Object { $_ -replace '\\([@:])', '$1' }
-            [net.webrequest]::defaultwebproxy.credentials = New-Object net.networkcredential($username, $password)
+
+            $proxyObject.Credentials = New-Object Net.NetworkCredential($username, $password)
+        }
+
+        # PowerShell 5.1 / WebRequest
+        [Net.WebRequest]::DefaultWebProxy = $proxyObject
+
+        # PowerShell 7+ / HttpClient
+        if ($PSVersionTable.PSVersion.Major -ge 7) {
+            [Net.Http.HttpClient]::DefaultProxy = $proxyObject
         }
     } catch {
-        warn "Failed to use proxy '$proxy': $($_.exception.message)"
+        warn "Failed to use proxy '$proxy': $($_.Exception.Message)"
     }
 }
 
@@ -637,6 +696,7 @@ function handle_special_urls($url) {
     return $url
 }
 
+
 ### Remote file information
 
 function download_json($url) {
@@ -672,7 +732,7 @@ function get_magic_bytes_pretty($file, $glue = ' ') {
     return (get_magic_bytes $file | ForEach-Object { $_.ToString('x2') }) -join $glue
 }
 
-Function Get-RemoteFileSize ($Uri) {
+function Get-RemoteFileSize ($Uri) {
     $response = Invoke-WebRequest -Uri $Uri -Method HEAD -UseBasicParsing
     if (!$response.Headers.StatusCode) {
         $response.Headers.'Content-Length' | ForEach-Object { [int]$_ }
@@ -695,13 +755,13 @@ function url_remote_filename($url) {
     # this function extracts the original filename from the URL.
     $uri = (New-Object URI $url)
     $basename = Split-Path $uri.PathAndQuery -Leaf
-    If ($basename -match '.*[?=]+([\w._-]+)') {
+    if ($basename -match '.*[?=]+([\w._-]+)') {
         $basename = $matches[1]
     }
-    If (($basename -notlike '*.*') -or ($basename -match '^[v.\d]+$')) {
+    if (($basename -notlike '*.*') -or ($basename -match '^[v.\d]+$')) {
         $basename = Split-Path $uri.AbsolutePath -Leaf
     }
-    If (($basename -notlike '*.*') -and ($uri.Fragment -ne '')) {
+    if (($basename -notlike '*.*') -and ($uri.Fragment -ne '')) {
         $basename = $uri.Fragment.Trim('/', '#')
     }
     return $basename
