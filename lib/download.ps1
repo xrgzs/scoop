@@ -566,30 +566,79 @@ function setup_proxy() {
         # 从环境变量读取代理
         $proxy = $env:HTTP_PROXY
         if (!$proxy) { $proxy = $env:HTTPS_PROXY }
+        if (!$proxy) { $proxy = $env:ALL_PROXY }
         if (!$proxy) { $proxy = $env:http_proxy }
         if (!$proxy) { $proxy = $env:https_proxy }
+        if (!$proxy) { $proxy = $env:all_proxy }
         if (!$proxy) { return }
     }
+
+    Remove-Item Env:SCOOP_REGION -ErrorAction SilentlyContinue
+
     try {
+        # Extract scheme prefix if present (e.g. 'http://' commonly found in
+        # HTTP_PROXY/HTTPS_PROXY environment variables). Supported schemes are
+        # http, https and socks4/4a/5/5h; anything else falls back to http.
+        $scheme = 'http'
+        if ($proxy -match '^(?i)(https?|socks[45]h?a?)://') {
+            $scheme = $Matches[1].ToLower()
+            $proxy = $proxy.Substring($Matches[0].Length)
+        }
+
+        # SOCKS proxies (any variant) require HttpClient (.NET 5+), available
+        # since PowerShell 7 only; WebRequest in Windows PowerShell 5.1
+        # (.NET Framework) does not support SOCKS at all
+        if ($PSVersionTable.PSVersion.Major -lt 7 -and $scheme -like 'socks*') {
+            warn 'SOCKS proxy is not supported in Windows PowerShell 5.1 or earlier. Please use PowerShell 7+.'
+            return
+        }
+
         $credentials, $address = $proxy -split '(?<!\\)@'
         if (!$address) {
             $address, $credentials = $credentials, $null # no credentials supplied
         }
 
+        # Disable proxy
         if ($address -eq 'none') {
-            [net.webrequest]::defaultwebproxy = $null
-        } elseif ($address -ne 'default') {
-            [net.webrequest]::defaultwebproxy = New-Object net.webproxy "http://$address"
+            [Net.WebRequest]::DefaultWebProxy = $null
+
+            if ($PSVersionTable.PSVersion.Major -ge 7) {
+                [Net.Http.HttpClient]::DefaultProxy = [Net.GlobalProxySelection]::GetEmptyWebProxy()
+            }
+            return
         }
 
+        # Use system/default proxy
+        if ($address -eq 'default') {
+            [Net.WebRequest]::DefaultWebProxy = [Net.GlobalProxySelection]::Select
+
+            if ($PSVersionTable.PSVersion.Major -ge 7) {
+                [Net.Http.HttpClient]::DefaultProxy = [Net.GlobalProxySelection]::Select
+            }
+            return
+        }
+
+        # Create proxy object, keep the original scheme (http/https/socks5)
+        $proxyObject = New-Object Net.WebProxy "$scheme`://$address"
+
+        # Configure credentials
         if ($credentials -eq 'currentuser') {
-            [net.webrequest]::defaultwebproxy.credentials = [net.credentialcache]::defaultcredentials
+            $proxyObject.Credentials = [Net.CredentialCache]::DefaultCredentials
         } elseif ($credentials) {
             $username, $password = $credentials -split '(?<!\\):' | ForEach-Object { $_ -replace '\\([@:])', '$1' }
-            [net.webrequest]::defaultwebproxy.credentials = New-Object net.networkcredential($username, $password)
+
+            $proxyObject.Credentials = New-Object Net.NetworkCredential($username, $password)
+        }
+
+        # PowerShell 5.1 / WebRequest
+        [Net.WebRequest]::DefaultWebProxy = $proxyObject
+
+        # PowerShell 7+ / HttpClient
+        if ($PSVersionTable.PSVersion.Major -ge 7) {
+            [Net.Http.HttpClient]::DefaultProxy = $proxyObject
         }
     } catch {
-        warn "Failed to use proxy '$proxy': $($_.exception.message)"
+        warn "Failed to use proxy '$proxy': $($_.Exception.Message)"
     }
 }
 
