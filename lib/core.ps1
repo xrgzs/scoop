@@ -234,6 +234,52 @@ function Complete-ConfigChange {
     }
 }
 
+# Resolve the effective proxy URL for native git operations.
+# Native git (libcurl) does not read the Windows system proxy (WinINET), so we must
+# resolve it explicitly and inject it via HTTP(S)_PROXY. Resolution mirrors setup_proxy():
+# PROXY config -> environment variables -> Windows system default ('default'/unset).
+function Get-EffectiveGitProxy {
+    $proxy = get_config PROXY
+
+    # Fall back to common proxy environment variables when no explicit config is set
+    if ([String]::IsNullOrEmpty($proxy)) {
+        $proxy = $env:HTTP_PROXY, $env:HTTPS_PROXY, $env:ALL_PROXY,
+                 $env:http_proxy, $env:https_proxy, $env:all_proxy |
+            Where-Object { -not [String]::IsNullOrEmpty($_) } | Select-Object -First 1
+    }
+
+    # 'none' explicitly disables proxying
+    if ($proxy -eq 'none') { return $null }
+
+    # Normalize a leading scheme (env vars commonly carry http:// etc.)
+    $scheme = 'http'
+    if ($proxy -match '^(?i)(https?|socks[45]h?a?)://') {
+        $scheme = $Matches[1].ToLower()
+        $proxy = $proxy.Substring($Matches[0].Length)
+    }
+
+    # Unset or 'default' -> resolve the Windows system proxy (WinINET / Internet Options)
+    if ([String]::IsNullOrEmpty($proxy) -or $proxy -eq 'default') {
+        try {
+            $probe = [Uri]'https://github.com/'
+            $resolved = [Net.GlobalProxySelection]::Select.GetProxy($probe)
+            # GetProxy returns the original URI when no proxy applies (direct connection),
+            # which also honors any configured bypass/NO_PROXY list.
+            if ($null -ne $resolved -and $resolved.AbsoluteUri -cne $probe.AbsoluteUri) {
+                return "$($resolved.Scheme)://$($resolved.Authority)"
+            }
+        } catch {}
+        return $null
+    }
+
+    # currentuser@ -> :@ so git can authenticate with the logged-in user's credentials
+    if ($proxy.StartsWith('currentuser@')) {
+        $proxy = $proxy.Replace('currentuser@', ':@')
+    }
+
+    return "$scheme`://$proxy"
+}
+
 function Invoke-Git {
     [CmdletBinding()]
     [OutputType([String])]
@@ -246,32 +292,54 @@ function Invoke-Git {
         [Parameter(Mandatory = $true, Position = 1)]
         [Alias('Args')]
         [String[]]
-        $ArgumentList
+        $ArgumentList,
+        [Parameter(Mandatory = $false)]
+        [ValidateRange(0, [int]::MaxValue)]
+        [int]
+        $Timeout = 0
     )
 
-    $proxy = get_config PROXY
+    # Resolve effective proxy (config -> env vars -> Windows system proxy) for git
+    $proxy = Get-EffectiveGitProxy
     $git = Get-HelperPath -Helper Git
 
     if ($WorkingDirectory) {
         $ArgumentList = @('-C', $WorkingDirectory) + $ArgumentList
     }
 
-    if ([String]::IsNullOrEmpty($proxy) -or $proxy -eq 'none') {
-        return & $git @ArgumentList
-    }
+    $isNetworkOp = $ArgumentList -match '\b(clone|checkout|pull|fetch|ls-remote)\b'
+    $hasProxy = -not [String]::IsNullOrEmpty($proxy)
 
-    if ($ArgumentList -match '\b(clone|checkout|pull|fetch|ls-remote)\b') {
+    # Use job-based execution for network operations with proxy or timeout
+    if ($isNetworkOp -and ($hasProxy -or $Timeout -gt 0)) {
+        $exitCodeFile = [System.IO.Path]::GetTempFileName()
         $j = Start-Job -ScriptBlock {
-            # convert proxy setting for git
-            $proxy = $using:proxy
-            if ($proxy -and $proxy.StartsWith('currentuser@')) {
-                $proxy = $proxy.Replace('currentuser@', ':@')
+            param($git, $ArgumentList, $proxy, $exitCodeFile)
+            # Inject the resolved proxy into git's environment (libcurl does not read WinINET)
+            if ($proxy) {
+                $env:HTTPS_PROXY = $proxy
+                $env:HTTP_PROXY = $proxy
             }
-            $env:HTTPS_PROXY = $proxy
-            $env:HTTP_PROXY = $proxy
-            & $using:git @using:ArgumentList
+            & $git @ArgumentList
+            # Save exit code to file since jobs don't propagate $LASTEXITCODE
+            Set-Content -Path $exitCodeFile -Value $LASTEXITCODE
+        } -ArgumentList $git, $ArgumentList, $proxy, $exitCodeFile
+
+        if ($Timeout -gt 0) {
+            $completed = $j | Wait-Job -Timeout $Timeout
+            if (-not $completed) {
+                $j | Stop-Job -PassThru | Remove-Job -Force
+                Remove-Item $exitCodeFile -Force -ErrorAction SilentlyContinue
+                throw "Git operation timed out after ${Timeout}s: $($ArgumentList -join ' ')"
+            }
         }
+
         $o = $j | Receive-Job -Wait -AutoRemoveJob
+        # Read exit code from temp file
+        if (Test-Path $exitCodeFile) {
+            $global:LASTEXITCODE = [int](Get-Content $exitCodeFile)
+            Remove-Item $exitCodeFile -Force -ErrorAction SilentlyContinue
+        }
         return $o
     }
 
