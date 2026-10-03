@@ -55,6 +55,65 @@ Describe 'Get-HelperPath' -Tag 'Scoop' {
     }
 }
 
+Describe 'Get-EffectiveGitProxy' -Tag 'Scoop' {
+    BeforeEach {
+        $env:HTTP_PROXY = $null
+        $env:HTTPS_PROXY = $null
+        $env:ALL_PROXY = $null
+        $env:http_proxy = $null
+        $env:https_proxy = $null
+        $env:all_proxy = $null
+    }
+
+    It 'should return null when PROXY is unset and no env vars are set' {
+        Mock get_config { $null } -ParameterFilter { $name -eq 'PROXY' }
+        Get-EffectiveGitProxy | Should -BeNullOrEmpty
+    }
+
+    It 'should return null for explicit none' {
+        Mock get_config { 'none' } -ParameterFilter { $name -eq 'PROXY' }
+        Get-EffectiveGitProxy | Should -BeNullOrEmpty
+    }
+
+    It 'should use PROXY config with an http scheme by default' {
+        Mock get_config { '127.0.0.1:10808' } -ParameterFilter { $name -eq 'PROXY' }
+        Get-EffectiveGitProxy | Should -Be 'http://127.0.0.1:10808'
+    }
+
+    It 'should preserve an explicit scheme from PROXY config' {
+        Mock get_config { 'socks5h://127.0.0.1:10808' } -ParameterFilter { $name -eq 'PROXY' }
+        Get-EffectiveGitProxy | Should -Be 'socks5h://127.0.0.1:10808'
+    }
+
+    It 'should normalize currentuser credentials for git' {
+        Mock get_config { 'currentuser@127.0.0.1:10808' } -ParameterFilter { $name -eq 'PROXY' }
+        Get-EffectiveGitProxy | Should -Be 'http://:@127.0.0.1:10808'
+    }
+
+    It 'should fall back to HTTP_PROXY env var when config is unset' {
+        Mock get_config { $null } -ParameterFilter { $name -eq 'PROXY' }
+        $env:HTTP_PROXY = 'http://127.0.0.1:10809'
+        Get-EffectiveGitProxy | Should -Be 'http://127.0.0.1:10809'
+    }
+
+    It 'should fall back to HTTPS_PROXY env var when HTTP_PROXY is unset' {
+        Mock get_config { $null } -ParameterFilter { $name -eq 'PROXY' }
+        $env:HTTPS_PROXY = 'https://127.0.0.1:10810'
+        Get-EffectiveGitProxy | Should -Be 'https://127.0.0.1:10810'
+    }
+
+    It 'should prefer PROXY config over env vars' {
+        Mock get_config { '127.0.0.1:10808' } -ParameterFilter { $name -eq 'PROXY' }
+        $env:HTTP_PROXY = 'http://127.0.0.1:9999'
+        Get-EffectiveGitProxy | Should -Be 'http://127.0.0.1:10808'
+    }
+
+    It 'should not throw when resolving the system default proxy' {
+        Mock get_config { $null } -ParameterFilter { $name -eq 'PROXY' }
+        { Get-EffectiveGitProxy } | Should -Not -Throw
+    }
+}
+
 
 Describe 'Test-HelperInstalled' -Tag 'Scoop' {
     It 'should return true if program is installed' {
