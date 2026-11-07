@@ -92,11 +92,16 @@ function Sync-Scoop {
             Invoke-Git -Path $currentdir -ArgumentList @('checkout', '-B', $configBranch, '-t', "origin/$configBranch", '-q')
             # reset branch HEAD
             Invoke-Git -Path $currentdir -ArgumentList @('reset', '--hard', "origin/$configBranch", '-q')
+            $res = $LASTEXITCODE
         } else {
-            Invoke-Git -Path $currentdir -ArgumentList @('pull', '--tags', '--force', '-q')
+            Invoke-Git -Path $currentdir -ArgumentList @('fetch', '--force', '--tags', 'origin', "refs/heads/$configBranch`:refs/remotes/origin/$configBranch", '-q') -Timeout 100
+            $res = $LASTEXITCODE
+            if ($res -eq 0) {
+                Invoke-Git -Path $currentdir -ArgumentList @('reset', '--hard', "origin/$configBranch", '-q')
+                $res = $LASTEXITCODE
+            }
         }
 
-        $res = $lastexitcode
         if ($Log) {
             Invoke-GitLog -Path $currentdir -CommitHash $previousCommit
         }
