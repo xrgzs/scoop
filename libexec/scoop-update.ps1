@@ -41,6 +41,20 @@ $quiet = $opt.q -or $opt.quiet
 $independent = $opt.i -or $opt.independent
 $all = $opt.a -or $opt.all
 
+# load config
+$configRepo = get_config SCOOP_REPO
+if (!$configRepo -or ($configRepo -match 'https?://gitee.com/xrgzs/scoop')) {
+    $configRepo = 'https://gitcode.com/xrgzs/scoop'
+    set_config SCOOP_REPO $configRepo | Out-Null
+}
+
+# Find current update channel from config
+$configBranch = get_config SCOOP_BRANCH
+if (!$configBranch) {
+    $configBranch = 'master'
+    set_config SCOOP_BRANCH $configBranch | Out-Null
+}
+
 if (($PSVersionTable.PSVersion.Major) -lt 5) {
     # check powershell version
     Write-Output 'PowerShell 5 or later is required to run Scoop.'

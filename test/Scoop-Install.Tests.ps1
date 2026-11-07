@@ -59,6 +59,7 @@ Describe 'link_app' -Tag 'Scoop' {
         $version = '/fake/app/1.0'
         Mock New-ShimFromManifest {}
         Mock create_startmenu_shortcuts {}
+        Mock sync_uninstall_shortcut {}
         Mock install_psmodule {}
         Mock env_add_path {}
         Mock env_set {}
@@ -68,10 +69,15 @@ Describe 'link_app' -Tag 'Scoop' {
     }
 
     It 'should link through current and persist the version' {
+        $app = 'foo'
+        $bucket = 'extras'
         link_app ([PSCustomObject]@{}) $current $version '/fake/persist' $false '64bit'
 
         Should-Invoke New-ShimFromManifest -Times 1 -ParameterFilter { $dir -eq $current }
         Should-Invoke create_startmenu_shortcuts -Times 1 -ParameterFilter { $dir -eq $current }
+        Should-Invoke sync_uninstall_shortcut -Times 1 -ParameterFilter {
+            $app -eq 'foo' -and $bucket -eq 'extras'
+        }
         Should-Invoke install_psmodule -Times 1 -ParameterFilter { $dir -eq $current }
         Should-Invoke env_add_path -Times 1 -ParameterFilter { $dir -eq $current }
         Should-Invoke unlink_persist_data -Times 1 -ParameterFilter { $dir -eq $version }
@@ -98,6 +104,82 @@ Describe 'unlink_app' -Tag 'Scoop' {
         Should-Invoke uninstall_psmodule -Times 1 -ParameterFilter { $dir -eq $current }
         Should-Invoke env_rm_path -Times 1 -ParameterFilter { $dir -eq $current }
         Should-Invoke unlink_persist_data -Times 1 -ParameterFilter { $dir -eq $version }
+    }
+}
+
+Describe 'sync_desktop_shortcut' -Tag 'Scoop' {
+    BeforeEach {
+        Mock desktop_shortcut_path { 'desktop.lnk' }
+        Mock create_shortcut_file {}
+        Mock remove_shortcut_file {}
+    }
+
+    It 'creates the first declared shortcut when enabled' {
+        Mock get_config { $true } -ParameterFilter { $Name -eq 'DESKTOP_SHORTCUT' }
+        Mock substitute { $string }
+        $manifest = '{"shortcuts":[["app.exe","App Name"],["other.exe","Other"]]}' | ConvertFrom-Json
+
+        sync_desktop_shortcut $manifest 'C:\apps\foo\current' $false '64bit' 'foo'
+
+        Should-Invoke create_shortcut_file -Times 1 -ParameterFilter {
+            $shortcutName -eq 'App Name' -and $path -eq 'desktop.lnk'
+        }
+        Should-Invoke remove_shortcut_file -Times 0
+    }
+
+    It 'leaves desktop shortcuts for blacklisted apps untouched' {
+        Mock get_config { $true } -ParameterFilter { $Name -eq 'DESKTOP_SHORTCUT' }
+        $manifest = '{"shortcuts":[["git-bash.exe","Git Bash"]]}' | ConvertFrom-Json
+
+        sync_desktop_shortcut $manifest 'C:\apps\git\current' $false '64bit' 'git'
+
+        Should-Invoke create_shortcut_file -Times 0
+        Should-Invoke desktop_shortcut_path -Times 0
+        Should-Invoke remove_shortcut_file -Times 0
+    }
+
+    It 'removes existing desktop shortcuts when disabled for non-blacklisted apps' {
+        Mock get_config { $false } -ParameterFilter { $Name -eq 'DESKTOP_SHORTCUT' }
+        $manifest = '{"shortcuts":[["app.exe","App Name"]]}' | ConvertFrom-Json
+
+        sync_desktop_shortcut $manifest 'C:\apps\foo\current' $false '64bit' 'foo'
+
+        Should-Invoke create_shortcut_file -Times 0
+        Should-Invoke remove_shortcut_file -Times 1 -ParameterFilter { $path -eq 'desktop.lnk' }
+    }
+}
+
+Describe 'rm_startmenu_shortcuts' -Tag 'Scoop' {
+    It 'keeps desktop shortcuts for blacklisted apps while removing Start Menu shortcuts' {
+        Mock shortcut_folder { $TestDrive }
+        Mock desktop_shortcut_path { 'desktop.lnk' }
+        Mock remove_shortcut_file {}
+        $app = 'git'
+        $manifest = '{"shortcuts":[["git-bash.exe","Git Bash"]]}' | ConvertFrom-Json
+
+        rm_startmenu_shortcuts $manifest $false '64bit'
+
+        Should-Invoke remove_shortcut_file -Times 1 -ParameterFilter { $path -like '*Git Bash.lnk' }
+        Should-Invoke desktop_shortcut_path -Times 0
+    }
+}
+
+Describe 'sync_uninstall_shortcut' -Tag 'Scoop' {
+    It 'registers the selected app metadata and global commands' {
+        Mock get_config { $true } -ParameterFilter { $Name -eq 'UNINSTALL_SHORTCUT' }
+        Mock uninstall_shortcut_registry_path { 'HKLM:\Software\test' }
+        Mock write_uninstall_shortcut_entry {}
+        $manifest = '{"version":"1.2.3","shortcuts":[["app.exe","Folder\\App Name"]]}' | ConvertFrom-Json
+
+        sync_uninstall_shortcut $manifest 'C:\apps\foo\current' $true '64bit' 'foo' 'extras'
+
+        Should-Invoke write_uninstall_shortcut_entry -Times 1 -ParameterFilter {
+            $path -eq 'HKLM:\Software\test' -and
+            $values.DisplayName -eq 'App Name (Scoop)' -and
+            $values.Publisher -eq 'extras' -and
+            $values.UninstallString -like '*uninstall `"foo`" -p -g*' -and
+            $values.ModifyPath -like '*reset `"foo`"*'
+        }
     }
 }
 

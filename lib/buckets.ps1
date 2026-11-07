@@ -1,3 +1,5 @@
+. "$PSScriptRoot\mirror.ps1"
+
 $bucketsdir = "$scoopdir\buckets"
 
 function Find-BucketDirectory {
@@ -114,7 +116,7 @@ function list_buckets {
             $bucket.Updated = (Get-Item "$path\bucket" -ErrorAction SilentlyContinue).LastWriteTime
         }
         $bucket.Manifests = Get-ChildItem -Path "$path\bucket" -Filter "*.json" -File -Force -Recurse -ErrorAction SilentlyContinue |
-                Measure-Object | Select-Object -ExpandProperty Count
+        Measure-Object | Select-Object -ExpandProperty Count
         $buckets += [PSCustomObject]$bucket
     }
     ,$buckets
@@ -131,7 +133,7 @@ function add_bucket($name, $repo) {
         warn "The '$name' bucket already exists. To add this bucket again, first remove it by running 'scoop bucket rm $name'."
         return 2
     }
-
+    $repo = url_replace $repo
     $uni_repo = Convert-RepositoryUri -Uri $repo
     if ($null -eq $uni_repo) {
         return 1
@@ -147,7 +149,12 @@ function add_bucket($name, $repo) {
     }
 
     Write-Host 'Checking repo... ' -NoNewline
-    $out = Invoke-Git -ArgumentList @('ls-remote', $repo) 2>&1
+    try {
+        $out = Invoke-Git -ArgumentList @('ls-remote', $repo) -Timeout 100 2>&1
+    } catch {
+        error $_.Exception.Message
+        return 1
+    }
     if ($LASTEXITCODE -ne 0) {
         Write-Host 'Error.' -ForegroundColor DarkRed
         error "'$repo' doesn't look like a valid git repository`n`nError given:`n$out"
@@ -155,7 +162,14 @@ function add_bucket($name, $repo) {
     }
     ensure $bucketsdir | Out-Null
     $dir = ensure $dir
-    $out = Invoke-Git -ArgumentList @('clone', $repo, $dir, '-q')
+    try {
+        $out = Invoke-Git -ArgumentList @('clone', $repo, $dir) -Timeout 100
+    } catch {
+        Write-Host 'Error.' -ForegroundColor DarkRed
+        error "Failed to clone '$repo' to '$dir'.`n`nError given:`n$($_.Exception.Message)`n`nPlease check the repository URL or network connection and try again."
+        Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+        return 1
+    }
     if ($LASTEXITCODE -ne 0) {
         Write-Host 'Error.' -ForegroundColor DarkRed
         error "Failed to clone '$repo' to '$dir'.`n`nError given:`n$out`n`nPlease check the repository URL or network connection and try again."
