@@ -274,6 +274,9 @@ function restore_app($ctx, $old_manifest, $old_version, $backup) {
         $original_dir = $ctx.dir
         try {
             $dir = link_current $ctx.dir
+            $install = install_info $ctx.app $old_version $ctx.global
+            $app = $ctx.app
+            $bucket = $install.bucket
             link_app $old_manifest $dir $original_dir $ctx.persist_dir $ctx.global $ctx.architecture
         } catch {
             warn "'$($ctx.app)' ($old_version) was restored, but its links could not be recreated: $($_.Exception.Message)"

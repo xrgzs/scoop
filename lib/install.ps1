@@ -270,6 +270,8 @@ function unlink_current($versiondir) {
 function link_app($manifest, $dir, $original_dir, $persist_dir, $global, $architecture) {
     New-ShimFromManifest $manifest $dir $global $architecture
     create_startmenu_shortcuts $manifest $dir $global $architecture
+    $bucketName = if ($bucket) { $bucket } elseif ($install) { $install.bucket }
+    sync_uninstall_shortcut $manifest $dir $global $architecture $app $bucketName
     install_psmodule $manifest $dir $global
     env_set $manifest $global $architecture
     env_add_path $manifest $dir $persist_dir $global $architecture
@@ -283,6 +285,7 @@ function link_app($manifest, $dir, $original_dir, $persist_dir, $global, $archit
 function unlink_app($app, $manifest, $dir, $persist_dir, $global, $architecture) {
     Remove-ShimFromManifest $app $manifest $global $architecture
     rm_startmenu_shortcuts $manifest $global $architecture
+    remove_uninstall_shortcut $app $global
     # If a junction was used during install, that will have been used
     # as the reference directory. Otherwise it will just be the version
     # directory.
