@@ -55,6 +55,28 @@ Describe 'Get-HelperPath' -Tag 'Scoop' {
         { Get-HelperPath -Helper Wrong } | Should-Throw
     }
 
+    Context 'Aria2' {
+        It 'should prefer aria2 over aria2-next' {
+            Mock Get-AppFilePath { 'aria2\current\aria2c.exe' } -ParameterFilter { $App -eq 'aria2' }
+            Mock Get-AppFilePath { 'aria2-next\current\aria2-next.exe' } -ParameterFilter { $App -eq 'aria2-next' }
+
+            Get-HelperPath -Helper Aria2 | Should-Be 'aria2\current\aria2c.exe'
+        }
+
+        It 'should fall back to aria2-next when aria2 is not installed' {
+            Mock Get-AppFilePath { $null } -ParameterFilter { $App -eq 'aria2' }
+            Mock Get-AppFilePath { 'aria2-next\current\aria2-next.exe' } -ParameterFilter { $App -eq 'aria2-next' }
+
+            Get-HelperPath -Helper Aria2 | Should-Be 'aria2-next\current\aria2-next.exe'
+        }
+
+        It 'should return null when neither aria2 nor aria2-next is installed' {
+            Mock Get-AppFilePath { $null }
+
+            Get-HelperPath -Helper Aria2 | Should-BeNull
+        }
+    }
+
     Context 'Git' {
         BeforeEach {
             $gitTestRoot = Join-Path $TestDrive ([Guid]::NewGuid().ToString('N'))
