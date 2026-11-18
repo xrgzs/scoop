@@ -534,7 +534,13 @@ function Get-HelperPath {
                     $HelperPath = Get-AppFilePath 'wixtoolset' 'wix.exe'
                 }
             }
-            'Aria2' { $HelperPath = Get-AppFilePath 'aria2' 'aria2c.exe' }
+            'Aria2' {
+                $HelperPath = Get-AppFilePath 'aria2' 'aria2c.exe'
+                if ([String]::IsNullOrEmpty($HelperPath)) {
+                    # aria2-next ships its executable as aria2-next.exe
+                    $HelperPath = Get-AppFilePath 'aria2-next' 'aria2-next.exe'
+                }
+            }
         }
 
         return $HelperPath
