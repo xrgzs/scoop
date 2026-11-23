@@ -438,10 +438,10 @@ function Invoke-GhostDownloadFile($GhostCli, $Url, $Destination, $UserAgent, $Co
     $status = $null
     if ($final) { $status = $final.status }
 
-    if ($waitExit -ne 0 -or $status -ne 'completed') {
+    if ($status -ne 'completed') {
         $message = $waitResult
         if ($final -and $final.error) { $message = $final.error }
-        Write-Host "(ERR):ghd download failed [$status]: $message"
+        Write-Host "(ERR):ghd download failed [$status] (wait exit $waitExit): $message"
         Invoke-GhostCli $GhostCli @('remove', $taskId) | Out-Null
         Remove-Item -LiteralPath $waitOut, $waitErr -Force -ErrorAction SilentlyContinue
         return $false
