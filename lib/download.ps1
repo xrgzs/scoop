@@ -15,7 +15,20 @@ function Invoke-ScoopDownload ($app, $version, $manifest, $bucket, $architecture
     $cookies = $manifest.cookie
 
     # download first
-    if (Test-Aria2Enabled) {
+    $ghostEnabled = get_config 'ghost-enabled' $false
+    $ghostCli = $null
+    if ($ghostEnabled) {
+        $ghostCli = Get-GhostCliPath
+        if (!$ghostCli) {
+            warn 'Ghost Downloader is enabled, but ghd.exe was not found. Falling back to another downloader.'
+        }
+    }
+
+    if ($ghostEnabled -and $ghostCli) {
+        if (!(Invoke-CachedGhostDownload $app $version $manifest $architecture $dir $cookies $use_cache $check_hash $ghostCli)) {
+            return $null
+        }
+    } elseif (Test-Aria2Enabled) {
         if (!(Invoke-CachedAria2Download $app $version $manifest $architecture $dir $cookies $use_cache $check_hash)) {
             return $null
         }
@@ -277,6 +290,280 @@ function Write-DownloadProgress ($read, $total, $url) {
 
 function Test-Aria2Enabled {
     return (Test-HelperInstalled -Helper Aria2) -and (get_config 'aria2-enabled' $true)
+}
+
+## Ghost Downloader
+
+function Get-GhostCliPath {
+    $configured = get_config 'ghost-path'
+    if ($configured) {
+        if (Test-Path -LiteralPath $configured -PathType Container) {
+            $configured = Join-Path $configured 'ghd.exe'
+        }
+        if (Test-Path -LiteralPath $configured -PathType Leaf) {
+            return (Convert-Path -LiteralPath $configured)
+        }
+        warn "ghost-path '$configured' does not point to ghd.exe."
+    }
+
+    if ($env:GHD_CLI -and (Test-Path -LiteralPath $env:GHD_CLI -PathType Leaf)) {
+        return (Convert-Path -LiteralPath $env:GHD_CLI)
+    }
+
+    foreach ($app in @('Ghost-Downloader-portable', 'Ghost-Downloader')) {
+        $path = Get-AppFilePath $app 'bin\ghd.exe'
+        if ($path) { return $path }
+    }
+
+    $command = Get-Command ghd.exe -CommandType Application -ErrorAction Ignore | Select-Object -First 1
+    if ($command) { return $command.Source }
+
+    return $null
+}
+
+function Test-GhostEnabled {
+    return [bool](get_config 'ghost-enabled' $false) -and [bool](Get-GhostCliPath)
+}
+
+function Invoke-GhostCli($GhostCli, [string[]]$Arguments) {
+    $output = & $GhostCli @Arguments 2>&1
+    return [pscustomobject]@{
+        Output   = (($output | ForEach-Object { "$_" }) -join "`n")
+        ExitCode = $LASTEXITCODE
+    }
+}
+
+function ConvertFrom-GhostCliOutput($Text) {
+    if (!$Text) { return $null }
+    foreach ($line in ($Text -split "`r?`n")) {
+        $line = $line.Trim()
+        if ($line.StartsWith('{')) {
+            try { return $line | ConvertFrom-Json } catch { }
+        }
+    }
+    return $null
+}
+
+function Invoke-GhostDownloadFile($GhostCli, $Url, $Destination, $UserAgent, $CookieHeader, $Referer) {
+    if ($Url -match '^file:///') {
+        $localPath = [uri]::UnescapeDataString($Url.Substring(8)).Replace('/', '\')
+        if (!(Test-Path -LiteralPath $localPath -PathType Leaf)) {
+            Write-Host "(ERR):local file not found: $localPath"
+            return $false
+        }
+        Copy-Item -LiteralPath $localPath -Destination $Destination -Force
+        return $true
+    }
+
+    $folder = Split-Path -Parent $Destination
+    $name = Split-Path -Leaf $Destination
+    $arguments = @('add', $Url, '--folder', $folder, '--name', $name, '--conflict', 'overwrite')
+    if ($UserAgent) { $arguments += @('--header', "User-Agent: $UserAgent") }
+    if ($CookieHeader) { $arguments += @('--header', $CookieHeader) }
+    if ($Referer) { $arguments += @('--header', "Referer: $Referer") }
+
+    $add = $null
+    $taskId = $null
+    for ($attempt = 1; $attempt -le 2; $attempt++) {
+        $add = Invoke-GhostCli $GhostCli $arguments
+        $result = ConvertFrom-GhostCliOutput $add.Output
+        $item = @($result.result)[0]
+        if ($add.ExitCode -eq 0 -and $item -and $item.taskId) {
+            $taskId = $item.taskId
+            break
+        }
+        if ($attempt -eq 1) {
+            Write-Host '[Ghost] ghd add failed, retrying in 3s...'
+            Start-Sleep -Seconds 3
+        }
+    }
+    if (!$taskId) {
+        Write-Host "(ERR):ghd add failed: $($add.Output)"
+        return $false
+    }
+
+    $timeout = [int](get_config 'ghost-timeout' 300)
+    if ($timeout -lt 0) { $timeout = 0 }
+
+    $waitOut = [System.IO.Path]::GetTempFileName()
+    $waitErr = "$waitOut.err"
+    $waitProcess = $null
+    $waitExit = $null
+    $timedOut = $false
+    try {
+        $waitProcess = Start-Process -FilePath $GhostCli -ArgumentList @('wait', $taskId) -PassThru -NoNewWindow -RedirectStandardOutput $waitOut -RedirectStandardError $waitErr
+        $lastProgress = -1
+        $lastProgressAt = Get-Date
+        while (!$waitProcess.HasExited) {
+            Start-Sleep -Milliseconds 1500
+            $task = Invoke-GhostCli $GhostCli @('task', $taskId)
+            $taskResult = ConvertFrom-GhostCliOutput $task.Output
+            if ($taskResult.result) {
+                $progress = [int][math]::Round([double]$taskResult.result.progress, 0)
+                if ($progress -ne $lastProgress) {
+                    Write-Host ("`rDownload: [{0}] {1}%" -f $taskId, $progress) -NoNewline
+                    $lastProgress = $progress
+                    $lastProgressAt = Get-Date
+                }
+            }
+            if ($timeout -gt 0 -and ((Get-Date) - $lastProgressAt).TotalSeconds -ge $timeout) {
+                Write-Host "(ERR):ghd made no progress for $timeout seconds."
+                Invoke-GhostCli $GhostCli @('remove', $taskId) | Out-Null
+                $timedOut = $true
+                break
+            }
+        }
+        if ($timedOut) {
+            if (!$waitProcess.HasExited) {
+                try { $waitProcess.Kill() } catch { }
+            }
+        } else {
+            $waitProcess.WaitForExit()
+            $waitExit = $waitProcess.ExitCode
+        }
+        if ($lastProgress -ge 0) { Write-Host '' }
+    } finally {
+        if ($waitProcess -and !$waitProcess.HasExited) {
+            try { $waitProcess.Kill() } catch { }
+        }
+    }
+
+    if ($timedOut) {
+        Remove-Item -LiteralPath $waitOut, $waitErr -Force -ErrorAction SilentlyContinue
+        return $false
+    }
+
+    $waitResult = ConvertFrom-GhostCliOutput (Get-Content -LiteralPath $waitOut -Raw -ErrorAction SilentlyContinue)
+    $final = @($waitResult.result)[0]
+    $status = $null
+    if ($final) { $status = $final.status }
+
+    if ($status -ne 'completed') {
+        $message = $waitResult
+        if ($final -and $final.error) { $message = $final.error }
+        Write-Host "(ERR):ghd download failed [$status] (wait exit $waitExit): $message"
+        Invoke-GhostCli $GhostCli @('remove', $taskId) | Out-Null
+        Remove-Item -LiteralPath $waitOut, $waitErr -Force -ErrorAction SilentlyContinue
+        return $false
+    }
+
+    if (!(Test-Path -LiteralPath $Destination -PathType Leaf) -and $final.outputFolder -and $final.name) {
+        $downloaded = Join-Path $final.outputFolder $final.name
+        if (Test-Path -LiteralPath $downloaded -PathType Leaf) {
+            Move-Item -LiteralPath $downloaded -Destination $Destination -Force
+        }
+    }
+
+    Invoke-GhostCli $GhostCli @('remove', $taskId) | Out-Null
+    Remove-Item -LiteralPath $waitOut, $waitErr -Force -ErrorAction SilentlyContinue
+
+    if (!(Test-Path -LiteralPath $Destination -PathType Leaf)) {
+        Write-Host "(ERR):ghd completed but file not found: $Destination"
+        return $false
+    }
+    return $true
+}
+
+function Invoke-CachedGhostDownload ($app, $version, $manifest, $architecture, $dir, $cookies = $null, $use_cache = $true, $check_hash = $true, $ghostCli = $null) {
+    if (!$ghostCli) { $ghostCli = Get-GhostCliPath }
+    if (!$ghostCli) {
+        error 'Ghost Downloader CLI (ghd.exe) was not found.'
+        return $false
+    }
+
+    $urls = @(script:url $manifest $architecture)
+    $userAgent = Get-UserAgent
+    $cookieHeader = $null
+    if ($cookies) { $cookieHeader = "Cookie: $(cookie_header $cookies)" }
+
+    $startedGhost = $false
+    foreach ($url in $urls) {
+        $source = cache_path $app $version $url
+        $target = Join-Path $dir (url_filename $url)
+        $downloadedToTarget = $false
+
+        if ($use_cache -and (Test-Path -LiteralPath $source -PathType Leaf)) {
+            Write-Host "Loading $(url_remote_filename $url) from cache"
+        } else {
+            if (!$startedGhost) {
+                Write-Host 'Starting download with Ghost Downloader...'
+                $startedGhost = $true
+            }
+            ensure $cachedir | Out-Null
+            $tryUrl = $url
+            try {
+                $tryUrl = handle_special_urls $url
+            } catch {
+                Write-Host -ForegroundColor DarkRed $_
+            }
+
+            $referer = $null
+            if ($tryUrl -notmatch 'sourceforge\.net|portableapps\.com') {
+                $referer = strip_filename $tryUrl
+            }
+
+            $ok = $false
+            try {
+                # Apply Scoop's URL mirror, then strip the '#/name' rename hint
+                $ghostUrl = url_replace $tryUrl
+                $fragment = $ghostUrl.IndexOf('#/')
+                if ($fragment -ge 0) { $ghostUrl = $ghostUrl.Substring(0, $fragment) }
+                $ok = Invoke-GhostDownloadFile $ghostCli $ghostUrl $source $userAgent $cookieHeader $referer
+            } catch {
+                Write-Host -ForegroundColor DarkRed $_
+            }
+
+            if (!$ok) {
+                if (get_config 'ghost-fallback-enabled' $true) {
+                    warn "Ghost Downloader failed for $url; falling back to the default downloader."
+                    try {
+                        Invoke-CachedDownload $app $version $url $target $cookies $use_cache
+                    } catch {
+                        Write-Host -ForegroundColor DarkRed $_
+                        error "URL $url is not valid"
+                        error $(new_issue_msg $app $bucket 'download failed')
+                        return $false
+                    }
+                    if (!(Test-Path -LiteralPath $source -PathType Leaf) -and (Test-Path -LiteralPath $target -PathType Leaf)) {
+                        $source = $target
+                        $downloadedToTarget = $true
+                    }
+                } else {
+                    error "Ghost Downloader failed for $url."
+                    error $(new_issue_msg $app $bucket 'download failed')
+                    return $false
+                }
+            }
+        }
+
+        if ($check_hash) {
+            $manifest_hash = hash_for_url $manifest $url $architecture
+            $ok, $err = check_hash $source $manifest_hash $(show_app $app $bucket)
+            if (!$ok) {
+                error $err
+                if (Test-Path -LiteralPath $source) {
+                    Remove-Item -LiteralPath $source -Force -ErrorAction SilentlyContinue
+                    Remove-Item -LiteralPath "$source.part" -Force -ErrorAction SilentlyContinue
+                }
+                error $(new_issue_msg $app $bucket 'hash check failed')
+                return $false
+            }
+        }
+
+        if (!(Test-Path -LiteralPath $source -PathType Leaf)) {
+            error $(new_issue_msg $app $bucket 'cached file not found')
+            return $false
+        }
+
+        if (!($dir -eq $cachedir) -and !$downloadedToTarget) {
+            if ($use_cache) {
+                Copy-Item -LiteralPath $source -Destination $target -Force
+            } else {
+                Move-Item -LiteralPath $source -Destination $target -Force
+            }
+        }
+    }
+    return $true
 }
 
 function aria_exit_code($exitcode) {

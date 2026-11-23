@@ -179,6 +179,30 @@
 # aria2-options:
 #       Array of additional aria2 options.
 #       See: 'https://aria2.github.io/manual/en/html/aria2c.html#options'
+#
+# Ghost Downloader configuration
+# ------------------------------
+#
+# ghost-enabled: $true|$false
+#       Use Ghost Downloader's ghd CLI for downloading artifacts.
+#       When enabled it takes precedence over aria2.
+#       (Default is $false)
+#
+# ghost-path:
+#       Path to ghd.exe, or the folder containing it.
+#       When unset, Scoop checks GHD_CLI, the Ghost-Downloader-portable app, and PATH.
+#
+# ghost-fallback-enabled: $true|$false
+#       Automatically fall back to the default downloader when Ghost Downloader fails.
+#       (Default is $true)
+#
+# ghost-timeout: 300
+#       Seconds without progress before a Ghost download task is abandoned and
+#       the configured fallback is used. Set to 0 to wait indefinitely.
+#       (Default is 300)
+#
+#       Ghost Downloader uses its own proxy settings; Scoop's PROXY config is not
+#       forwarded. Scoop's URL_REPLACE mirror is applied to Ghost downloads.
 
 param($name, $value)
 

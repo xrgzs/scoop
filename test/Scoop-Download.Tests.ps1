@@ -26,6 +26,86 @@ Describe 'Test-Aria2Enabled' -Tag 'Scoop' {
     }
 }
 
+Describe 'Test-GhostEnabled' -Tag 'Scoop' {
+    It 'should return false when Ghost Downloader is disabled' {
+        Mock get_config { $false } -ParameterFilter { $name -eq 'ghost-enabled' }
+        Mock Get-GhostCliPath { 'ghd.exe' }
+        Test-GhostEnabled | Should-BeFalse
+    }
+
+    It 'should return false when Ghost Downloader is enabled but ghd is missing' {
+        Mock get_config { $true } -ParameterFilter { $name -eq 'ghost-enabled' }
+        Mock Get-GhostCliPath { $null }
+        Test-GhostEnabled | Should-BeFalse
+    }
+
+    It 'should return true when Ghost Downloader is enabled and ghd is available' {
+        Mock get_config { $true } -ParameterFilter { $name -eq 'ghost-enabled' }
+        Mock Get-GhostCliPath { 'ghd.exe' }
+        Test-GhostEnabled | Should-BeTrue
+    }
+}
+
+Describe 'Get-GhostCliPath' -Tag 'Scoop' {
+    BeforeEach {
+        Remove-Item Env:GHD_CLI -ErrorAction SilentlyContinue
+    }
+
+    AfterAll {
+        Remove-Item Env:GHD_CLI -ErrorAction SilentlyContinue
+    }
+
+    It 'should use the configured ghost-path' {
+        $ghd = Join-Path $TestDrive 'ghd.exe'
+        New-Item -ItemType File -Path $ghd | Out-Null
+        Mock get_config { $ghd } -ParameterFilter { $name -eq 'ghost-path' }
+        Mock Get-AppFilePath { $null }
+        Mock Get-Command { $null }
+
+        Get-GhostCliPath | Should-Be (Convert-Path -LiteralPath $ghd)
+    }
+
+    It 'should accept a folder for ghost-path' {
+        $folder = Join-Path $TestDrive 'ghost'
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        $ghd = Join-Path $folder 'ghd.exe'
+        New-Item -ItemType File -Path $ghd | Out-Null
+        Mock get_config { $folder } -ParameterFilter { $name -eq 'ghost-path' }
+        Mock Get-AppFilePath { $null }
+        Mock Get-Command { $null }
+
+        Get-GhostCliPath | Should-Be (Convert-Path -LiteralPath $ghd)
+    }
+
+    It 'should use GHD_CLI when ghost-path is unset' {
+        $ghd = Join-Path $TestDrive 'ghd-env.exe'
+        New-Item -ItemType File -Path $ghd | Out-Null
+        $env:GHD_CLI = $ghd
+        Mock get_config { $null }
+        Mock Get-AppFilePath { $null }
+        Mock Get-Command { $null }
+
+        Get-GhostCliPath | Should-Be (Convert-Path -LiteralPath $ghd)
+    }
+
+    It 'should auto-detect the Ghost Downloader app' {
+        Mock get_config { $null }
+        Mock Get-AppFilePath { $null }
+        Mock Get-AppFilePath { 'C:\scoop\apps\Ghost-Downloader-portable\current\bin\ghd.exe' } -ParameterFilter { $App -eq 'Ghost-Downloader-portable' }
+        Mock Get-Command { $null }
+
+        Get-GhostCliPath | Should-Be 'C:\scoop\apps\Ghost-Downloader-portable\current\bin\ghd.exe'
+    }
+
+    It 'should return null when ghd cannot be found' {
+        Mock get_config { $null }
+        Mock Get-AppFilePath { $null }
+        Mock Get-Command { $null }
+
+        Get-GhostCliPath | Should-BeNull
+    }
+}
+
 Describe 'New-DownloadRequest Accept header' -Tag 'Scoop' {
     BeforeAll {
         Mock Get-UserAgent { 'Scoop-Test' }

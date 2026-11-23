@@ -110,7 +110,21 @@ foreach ($curr_app in $apps) {
 
     $dl_failure = $false
 
-    if(Test-Aria2Enabled) {
+    $ghostEnabled = get_config 'ghost-enabled' $false
+    $ghostCli = $null
+    if ($ghostEnabled) {
+        $ghostCli = Get-GhostCliPath
+        if (!$ghostCli) {
+            warn 'Ghost Downloader is enabled, but ghd.exe was not found. Falling back to another downloader.'
+        }
+    }
+
+    if ($ghostEnabled -and $ghostCli) {
+        if (!(Invoke-CachedGhostDownload $app $version $manifest $architecture $cachedir $manifest.cookie $use_cache $curr_check_hash $ghostCli)) {
+            $download_failed = $true
+            continue
+        }
+    } elseif (Test-Aria2Enabled) {
         if (!(Invoke-CachedAria2Download $app $version $manifest $architecture $cachedir $manifest.cookie $use_cache $curr_check_hash)) {
             $download_failed = $true
             continue
